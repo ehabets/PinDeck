@@ -350,7 +350,11 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 * **3.0.0-beta.1**: Claude and Codex adapters, discovered model/effort menu, explicit provider
   switching with optional handover, curated model lists, a separate effort selector with per-model
-  preferences, restricted Codex tools, and separate v3 runtime state. Not published.
+  preferences, restricted Codex tools, and separate v3 runtime state. On npm as `pindeck@beta`.
+
+* **2.8.2**: declares macOS-only support in npm metadata and the README to prevent accidental
+  installation on unsupported operating systems. Source launches on other platforms show a support
+  notice without opening the deck.
 
 * **2.8.1**: fixes from a review. Speaker notes that fail to load leave the field empty and locked, instead
   of showing the previous slide's notes and saving your edits over them. A save that fails because the
