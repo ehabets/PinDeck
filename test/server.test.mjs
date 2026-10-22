@@ -396,9 +396,65 @@ test("A deck of another framework: refused with its name before anything is writ
   fs.writeFileSync(marp, html);
   const r = await failedStart(t, fx, { deck: marp });
   assert.equal(r.code, 1);
-  assert.match(r.output, /marp\.html is a Marp deck\. PinDeck works with reveal\.js decks only for now/);
+  assert.match(r.output, /marp\.html is a Marp deck\. PinDeck works with reveal\.js decks; other frameworks may follow/);
   assert.doesNotMatch(r.output, /Usage:/, "no usage text: the command was right");
   assert.equal(fs.readFileSync(marp, "utf8"), html, "no ids added");
+});
+
+/* ---- Decks made without reveal.js (<meta name="pindeck:slides">) ---------------------------------- */
+const SELECTOR_DECK = path.join(ROOT, "test", "fixtures", "selector-deck.html");
+function selectorFixture(t) {
+  const fx = fixture(t);
+  fs.copyFileSync(SELECTOR_DECK, path.join(fx.deck, "index.html"));
+  return fx;
+}
+test("A deck that names its slides: ids, slide actions, Claude's instructions and the print view", async (t) => {
+  const fx = selectorFixture(t);
+  const s = await startServer(t, fx);
+  const deck = () => fs.readFileSync(path.join(fx.deck, "index.html"), "utf8");
+  assert.equal(String((await s.api("slides")).data), " 1  a-deck-without-reveal\n 2  points\n 3  a-figure");
+  assert.match(deck(), /<li data-eid="points\/li">First point<\/li>/);
+  assert.match(deck(), /<nav class="dock">/, "the deck's own markup outside the slides stays as it is");
+
+  const add = await s.api("add-slide", { kind: "content", after: "points" });
+  assert.equal(add.status, 200, JSON.stringify(add.data));
+  assert.equal(add.data.index, 2);
+  const moved = await s.api("move-slide", { eid: add.data.eid, before: "points" });
+  assert.equal(moved.data.index, 1, JSON.stringify(moved.data));
+  assert.equal((await s.api("slide-hidden", { eid: "a-figure", hidden: true })).status, 200);
+  assert.match(deck(), /<section class="slide" data-visibility="hidden" id="s-figure" data-eid="a-figure">/);
+  assert.equal((await s.api("notes", { eid: "points", text: "Say this" })).status, 200);
+  assert.match(deck(), /<aside class="notes">Say this<\/aside>/);
+  assert.match(deck(), /<\/section>\n<\/main>\n<nav class="dock">/, "the slides stay inside the deck's container");
+
+  // the editor bridge is in the editor's view and, for such a deck, in the print view too (it lays out the pages)
+  const page = async (mode) => (await fetch(`${s.url}/deck/?editor=${mode}`, { headers: { "x-editor-token": s.token } })).text();
+  assert.match(await page("main"), /<script src="\/editor\/bridge\.js"><\/script>/);
+  assert.match(await page("pdf"), /<script src="\/editor\/bridge\.js"><\/script>/);
+  // Claude is told what the slides are
+  const start = await waitFor(() => fakeLog(fx).find((e) => e.event === "start"), "Claude to start");
+  const prompt = start.argv[start.argv.indexOf("--append-system-prompt") + 1];
+  assert.match(prompt, /## Slides of this deck\nThis deck is not made with reveal\.js: its slides are the elements matching the CSS selector `main\.deck > section\.slide`/);
+});
+
+test("A reveal.js deck's print view has no editor bridge: reveal.js lays out its own pages", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const html = await (await fetch(`${s.url}/deck/?editor=pdf&print-pdf`, { headers: { "x-editor-token": s.token } })).text();
+  assert.doesNotMatch(html, /editor\/bridge\.js/);
+  const start = await waitFor(() => fakeLog(fx).find((e) => e.event === "start"), "Claude to start");
+  assert.doesNotMatch(start.argv[start.argv.indexOf("--append-system-prompt") + 1], /## Slides of this deck/);
+});
+
+test("A deck whose slide selector finds nothing: refused, and the file is left as it is", async (t) => {
+  const fx = selectorFixture(t);
+  const file = path.join(fx.deck, "index.html");
+  const html = fs.readFileSync(file, "utf8").replace('content="main.deck > section.slide"', 'content="main.deck > section.page"');
+  fs.writeFileSync(file, html);
+  const r = await failedStart(t, fx);
+  assert.equal(r.code, 1);
+  assert.match(r.output, /index\.html: the slide selector "main\.deck > section\.page" in <meta name="pindeck:slides"> matches no elements\. Nothing was changed\./);
+  assert.equal(fs.readFileSync(file, "utf8"), html, "no ids added");
 });
 
 /* ---- Files outside the deck folder (--asset-root) and symlinks ----------------------------------- */
@@ -731,6 +787,29 @@ test("Real Chrome: screenshot, headless layout and PDF export through the login,
   assert.ok(args.includes("pindeck-start.html"));
   assert.ok(!args.includes(s.token), "no token on Chrome's command line");
   assert.doesNotMatch(args, /login\?code=|http:\/\//, "no login code or server URL on Chrome's command line");
+});
+
+test("Real Chrome, a deck that names its slides: screenshot at the slide size, headless layout and PDF pages",
+  { skip: !REAL_CHROME && "set PINDECK_TEST_CHROME to a Chrome or Chromium executable", timeout: 240000 }, async (t) => {
+  const fx = selectorFixture(t);
+  const s = await startServer(t, fx, { env: { CHROME_BIN: REAL_CHROME } });
+  const shot = await s.api("shot?slide=2");
+  assert.equal(shot.status, 200, String(shot.data));
+  const img = fs.readFileSync(String(shot.data).trim());
+  assert.equal(img.readUInt32BE(16), 1024, "Chrome opens the deck at its slide size");
+
+  const layout = await s.api("layout?slide=2");   // no editor tab: headless Chrome, through the selector deck's own view
+  assert.equal(layout.status, 200, String(layout.data));
+  assert.match(String(layout.data), /Slide 2 · points/);
+  assert.match(String(layout.data), /Canvas 1024×768 px/);
+  assert.match(String(layout.data), /\n\s+\/li\s+li\s+x=\d+ y=\d+ w=\d+ h=\d+\s+font 24px\s+"First point"/);
+  assert.match(String(layout.data), /\(slide\)\s+section\.slide\s+x=0 y=0 w=1024 h=768/, "no editor classes in the tags");
+
+  const pdf = await s.api("pdf?slide=handout");
+  assert.equal(pdf.status, 200, String(pdf.data));
+  const bytes = fs.readFileSync(path.join(fx.deck, "export", `${path.basename(fx.deck)}-handout.pdf`));
+  assert.equal((bytes.toString("latin1").match(/\/Type\s*\/Page[^s]/g) || []).length, 3, "one page per slide");
+  assert.match(bytes.toString("latin1"), /\/MediaBox\s*\[\s*0 0 768 576\s*\]/, "pages of the slide size (1024 x 768 px)");
 });
 
 /* ---- Conflicts: stale edits, Undo and Redo ------------------------------------------------------ */

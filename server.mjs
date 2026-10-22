@@ -24,7 +24,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assignEids, parse, findSlides, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd } from "./lib/eids.mjs";
+import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd } from "./lib/eids.mjs";
 import { unifiedDiff } from "./lib/diff.mjs";
 import { ClaudeSession } from "./lib/claude.mjs";
 import { formatLayout, formatPin } from "./lib/layout.mjs";
@@ -42,7 +42,8 @@ const USAGE = `Usage: pindeck [deck-folder | deck-file.html] [--port 5180] [--mo
        pindeck login [deck-folder | deck-file.html]
 
 Opens a reveal.js deck in PinDeck: a deck file such as talk.html, or a folder (default: the current
-folder), which then opens its index.html.
+folder), which then opens its index.html. A deck made otherwise names its slides in its <head> with
+<meta name="pindeck:slides" content="<CSS selector>"> and <meta name="pindeck:size" content="1440x1080">.
 login prints a new one-time login link for the PinDeck running for that deck
 (without a deck: for the PinDeck started last).
 --asset-root lets the deck use files outside its folder: a folder that contains the deck (paths such as
@@ -122,12 +123,17 @@ if (deckProblem) {
   console.error(`${deckProblem}\n\n${USAGE}`);
   process.exit(1);
 }
-// only reveal.js for now: another framework's deck is left exactly as it is (no ids, no state)
-const frameworkProblem = unsupportedMessage(fs.readFileSync(path.join(DECK_DIR, DECK_FILE), "utf8"), DECK_FILE);
+// reveal.js, or a deck that names its slides: another framework's deck is left exactly as it is (no ids, no state)
+const deckAtStart = fs.readFileSync(path.join(DECK_DIR, DECK_FILE), "utf8");
+const frameworkProblem = unsupportedMessage(deckAtStart, DECK_FILE);
 if (frameworkProblem) {
   console.error(frameworkProblem);
   process.exit(1);
 }
+/* A deck made without reveal.js names its slides with <meta name="pindeck:slides"> (null for reveal.js);
+   headless Chrome then opens it at the slide size, so a screenshot is the slide itself. */
+const DECK_SELECTOR = slideSelector(parse(deckAtStart));
+const SLIDE_SIZE = (DECK_SELECTOR && deckSize(parse(deckAtStart))) || { width: 1280, height: 720 };
 /* Runtime files hold the token, the chat and attachments: private to the user. Written only after the
    port is bound (see Start), so a failed start leaves no state behind. */
 const SERVER_FILES = [path.join(STATE_DIR, "server.json"), path.join(HOME_DIR, "server.json")];   // the second: the CLI's fallback
@@ -286,7 +292,7 @@ function chrome(args, done) {
     const profile = path.join(STATE_DIR, "chrome", `p${process.pid}-${++chromeSeq}`);
     const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
       "--no-default-browser-check", "--disable-extensions", "--mute-audio", `--user-data-dir=${profile}`,
-      "--window-size=1280,720", "--force-device-scale-factor=1", "--virtual-time-budget=5000",
+      `--window-size=${SLIDE_SIZE.width},${SLIDE_SIZE.height}`, "--force-device-scale-factor=1", "--virtual-time-budget=5000",
       ...args.map((a) => a.startsWith(ORIGIN + "/") ? chromeStart(profile, a) : a)]);
     let out = "", err = "", finished = false;
     const finish = (fn, v) => {
@@ -471,7 +477,12 @@ const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md
     `${DECK_FILE}. Other .html files in this folder are other decks: do not edit them.\n` : "") +
   (ASSET_ROOTS.length ? `\n\n## Files outside the deck folder\nThe deck may use files in ${ASSET_ROOTS.join(", ")}: refer to ` +
     `them with paths relative to ${DECK_FILE} (such as ../shared/style.css). You can read them; do not edit them, ` +
-    `other decks may use them too.\n` : "");
+    `other decks may use them too.\n` : "") +
+  (DECK_SELECTOR ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
+    `CSS selector \`${DECK_SELECTOR}\` (<meta name="pindeck:slides">), and the deck's own script shows them. Where these ` +
+    `instructions say <section> or reveal.js, read an element matching that selector, and that script. A new slide is ` +
+    `a new such element next to the others; keep the pindeck meta tags. Hidden slides (data-visibility="hidden") are ` +
+    `left out of PinDeck's PDF exports; whether presenting skips them depends on the deck's script.\n` : "");
 /* What Claude may never change, whatever the edit rules allow: the locked brand files, vendored libraries,
    git's own files, and other decks in this folder (a named deck shares its folder with them). Deny rules
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
@@ -1149,7 +1160,10 @@ const server = http.createServer(async (req, res) => {
       return serveFile(res, f, (s) => {
         // headless runs must not stream media, or Chrome never finishes the page
         if (mode === "shot" || mode === "dump" || mode === "pdf") s = s.replace(/\bpreload="(auto|metadata)"/g, 'preload="none"');
-        if (mode === "pdf") return s.replace(/<\/head>/i, PDF_HEAD_TAG).replace(/<\/body>/i, PDF_PAGE_TAG);
+        if (mode === "pdf") {
+          s = s.replace(/<\/head>/i, PDF_HEAD_TAG).replace(/<\/body>/i, PDF_PAGE_TAG);
+          return DECK_SELECTOR ? s.replace(/<\/body>/i, BRIDGE_TAG) : s;   // reveal.js lays out its own print view
+        }
         return s.replace(/<\/body>/i, BRIDGE_TAG);
       });
     }

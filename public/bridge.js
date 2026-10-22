@@ -4,7 +4,8 @@
      main     the visible slide in the editor: navigation, selection, drag and resize, text editing, pins
      measure  hidden 1280x720 copy used to measure any slide without moving the user's view
      shot     headless screenshot of one slide, with pin markers
-     dump     headless measurement; writes the result into the DOM for --dump-dom */
+     dump     headless measurement; writes the result into the DOM for --dump-dom
+     pdf      print layout for the PDF export (decks made without reveal.js; reveal.js has its own) */
 
 (function () {
   const params = new URLSearchParams(location.search);
@@ -14,64 +15,69 @@
   const deckMeta = (n) => document.querySelector(`meta[name="pindeck:${n}"]`)?.content?.trim();
   const FOOTER_TOP = deckMeta("footer-top") ? +deckMeta("footer-top") : null;
   const LOCKED_SEL = deckMeta("locked") || ".slide-foot, .logo";
+  // A deck made without reveal.js names its slides with <meta name="pindeck:slides"> (a CSS selector)
+  const SLIDE_SEL = deckMeta("slides") || null;
+  const SLIDE = SLIDE_SEL ? `:is(${SLIDE_SEL})` : ".reveal .slides section";   // in CSS and closest()
+  const SLIDE_OF = SLIDE_SEL || "section";   // the slide an element is on
   const host = () => (window.parent !== window ? window.parent.__editorHost : null);
-  let W = 1280, H = 720;
+  let W = 1280, H = 720, deck = null;   // deck: reveal.js or a selector deck (see "Decks" below)
 
   /* ---- Styles for editor-only overlays ---------------------------------------- */
   const css = document.createElement("style");
-  // --u = screen pixels per slide pixel, inverted: overlays keep a constant on-screen size at any zoom
+  // --pindeck-u = screen pixels per slide pixel, inverted: overlays keep a constant on-screen size at any
+  // zoom (a name of its own: decks use --u for their own units)
   css.textContent = `
-    .__pin { position:absolute; z-index:1000; width:calc(26px*var(--u,1)); height:calc(26px*var(--u,1));
-      margin:calc(-13px*var(--u,1)) 0 0 calc(-13px*var(--u,1)); border-radius:50%;
-      background:#ED8C01; color:#fff; font:700 calc(14px*var(--u,1))/calc(26px*var(--u,1)) system-ui, sans-serif; text-align:center;
-      box-shadow:0 0 0 calc(2px*var(--u,1)) #fff, 0 calc(2px*var(--u,1)) calc(6px*var(--u,1)) rgba(0,0,0,.45);
+    .__pin { position:absolute; z-index:1000; width:calc(26px*var(--pindeck-u,1)); height:calc(26px*var(--pindeck-u,1));
+      margin:calc(-13px*var(--pindeck-u,1)) 0 0 calc(-13px*var(--pindeck-u,1)); border-radius:50%;
+      background:#ED8C01; color:#fff; font:700 calc(14px*var(--pindeck-u,1))/calc(26px*var(--pindeck-u,1)) system-ui, sans-serif; text-align:center;
+      box-shadow:0 0 0 calc(2px*var(--pindeck-u,1)) #fff, 0 calc(2px*var(--pindeck-u,1)) calc(6px*var(--pindeck-u,1)) rgba(0,0,0,.45);
       cursor:pointer; pointer-events:auto; }
-    .__hover { position:absolute; z-index:999; pointer-events:none; outline:calc(2px*var(--u,1)) dashed #ED8C01;
-      outline-offset:calc(2px*var(--u,1)); background:rgba(237,140,1,.06); }
-    .__hover span { position:absolute; left:calc(-2px*var(--u,1)); background:#ED8C01; color:#fff; white-space:nowrap;
-      font:600 calc(11px*var(--u,1))/calc(17px*var(--u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--u,1));
-      border-radius:calc(3px*var(--u,1)); }
-    .__hover span.above { top:calc(-21px*var(--u,1)); } .__hover span.below { bottom:calc(-21px*var(--u,1)); }
+    .__hover { position:absolute; z-index:999; pointer-events:none; outline:calc(2px*var(--pindeck-u,1)) dashed #ED8C01;
+      outline-offset:calc(2px*var(--pindeck-u,1)); background:rgba(237,140,1,.06); }
+    .__hover span { position:absolute; left:calc(-2px*var(--pindeck-u,1)); background:#ED8C01; color:#fff; white-space:nowrap;
+      font:600 calc(11px*var(--pindeck-u,1))/calc(17px*var(--pindeck-u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--pindeck-u,1));
+      border-radius:calc(3px*var(--pindeck-u,1)); }
+    .__hover span.above { top:calc(-21px*var(--pindeck-u,1)); } .__hover span.below { bottom:calc(-21px*var(--pindeck-u,1)); }
     .__hover.locked { outline-color:#888; background:rgba(0,0,0,.04); }
     .__hover.locked span { background:#888; }
-    .__flash { position:absolute; z-index:998; pointer-events:none; outline:calc(3px*var(--u,1)) solid #ED8C01;
-      outline-offset:calc(3px*var(--u,1)); animation:__flash 1.4s ease-out forwards; }
+    .__flash { position:absolute; z-index:998; pointer-events:none; outline:calc(3px*var(--pindeck-u,1)) solid #ED8C01;
+      outline-offset:calc(3px*var(--pindeck-u,1)); animation:__flash 1.4s ease-out forwards; }
     @keyframes __flash { 0%,60% { opacity:1 } 100% { opacity:0 } }
-    html.__pinmode .reveal .slides section, html.__pinmode .reveal .slides section * { cursor:crosshair !important; }
-    html.__pinmode .reveal .slides section .__pin { cursor:pointer !important; }
-    .__hover.sel { outline:calc(1px*var(--u,1)) solid #1a73e8; outline-offset:0; background:none; }
+    html.__pinmode ${SLIDE}, html.__pinmode ${SLIDE} * { cursor:crosshair !important; }
+    html.__pinmode ${SLIDE} .__pin { cursor:pointer !important; }
+    .__hover.sel { outline:calc(1px*var(--pindeck-u,1)) solid #1a73e8; outline-offset:0; background:none; }
     .__hover.sel span { background:#1a73e8; }
-    .__sel { position:absolute; z-index:1001; pointer-events:none; outline:calc(1.5px*var(--u,1)) solid #1a73e8; }
-    .__sel i { position:absolute; width:calc(9px*var(--u,1)); height:calc(9px*var(--u,1)); margin:calc(-5px*var(--u,1)) 0 0 calc(-5px*var(--u,1));
-      background:#fff; border:calc(1.5px*var(--u,1)) solid #1a73e8; box-sizing:border-box; pointer-events:auto; }
+    .__sel { position:absolute; z-index:1001; pointer-events:none; outline:calc(1.5px*var(--pindeck-u,1)) solid #1a73e8; }
+    .__sel i { position:absolute; width:calc(9px*var(--pindeck-u,1)); height:calc(9px*var(--pindeck-u,1)); margin:calc(-5px*var(--pindeck-u,1)) 0 0 calc(-5px*var(--pindeck-u,1));
+      background:#fff; border:calc(1.5px*var(--pindeck-u,1)) solid #1a73e8; box-sizing:border-box; pointer-events:auto; }
     .__sel i[data-h="nw"] { left:0; top:0; cursor:nwse-resize; }   .__sel i[data-h="n"] { left:50%; top:0; cursor:ns-resize; }
     .__sel i[data-h="ne"] { left:100%; top:0; cursor:nesw-resize; } .__sel i[data-h="e"] { left:100%; top:50%; cursor:ew-resize; }
     .__sel i[data-h="se"] { left:100%; top:100%; cursor:nwse-resize; } .__sel i[data-h="s"] { left:50%; top:100%; cursor:ns-resize; }
     .__sel i[data-h="sw"] { left:0; top:100%; cursor:nesw-resize; } .__sel i[data-h="w"] { left:0; top:50%; cursor:ew-resize; }
     .__sel.readonly i { display:none; }
-    .__sel-label { position:absolute; left:calc(-1.5px*var(--u,1)); white-space:nowrap; background:#1a73e8; color:#fff;
-      font:600 calc(11px*var(--u,1))/calc(17px*var(--u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--u,1));
-      border-radius:calc(3px*var(--u,1)); font-variant-numeric:tabular-nums; }
-    .__sel-label.above { top:calc(-21px*var(--u,1)); } .__sel-label.below { bottom:calc(-21px*var(--u,1)); }
+    .__sel-label { position:absolute; left:calc(-1.5px*var(--pindeck-u,1)); white-space:nowrap; background:#1a73e8; color:#fff;
+      font:600 calc(11px*var(--pindeck-u,1))/calc(17px*var(--pindeck-u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--pindeck-u,1));
+      border-radius:calc(3px*var(--pindeck-u,1)); font-variant-numeric:tabular-nums; }
+    .__sel-label.above { top:calc(-21px*var(--pindeck-u,1)); } .__sel-label.below { bottom:calc(-21px*var(--pindeck-u,1)); }
     .__guide { position:absolute; z-index:1002; pointer-events:none; background:#e5399d; }
-    .__guide.v { top:0; height:100%; width:calc(1px*var(--u,1)); }
-    .__guide.h { left:0; width:100%; height:calc(1px*var(--u,1)); }
-    html.__selmode .reveal .slides section * { cursor:default; }
-    html.__selmode .reveal .slides section .__selected, html.__selmode.__dragging * { cursor:move !important; }
-    html.__selmode .reveal .slides section .__sel i { cursor:inherit; }
-    .__editing { outline:calc(2px*var(--u,1)) solid #1a73e8 !important; outline-offset:calc(3px*var(--u,1));
+    .__guide.v { top:0; height:100%; width:calc(1px*var(--pindeck-u,1)); }
+    .__guide.h { left:0; width:100%; height:calc(1px*var(--pindeck-u,1)); }
+    html.__selmode ${SLIDE} * { cursor:default; }
+    html.__selmode ${SLIDE} .__selected, html.__selmode.__dragging * { cursor:move !important; }
+    html.__selmode ${SLIDE} .__sel i { cursor:inherit; }
+    .__editing { outline:calc(2px*var(--pindeck-u,1)) solid #1a73e8 !important; outline-offset:calc(3px*var(--pindeck-u,1));
       background:rgba(26,115,232,.04); cursor:text !important; caret-color:#1a73e8; }
     .__editing * { cursor:text !important; }
-    .__hidden-banner { position:absolute; z-index:997; top:calc(26px*var(--u,1)); right:calc(26px*var(--u,1)); pointer-events:none;
-      background:#ED8C01; color:#fff; font:600 calc(12px*var(--u,1))/calc(22px*var(--u,1)) system-ui, sans-serif;
-      padding:0 calc(10px*var(--u,1)); border-radius:calc(11px*var(--u,1)); box-shadow:0 calc(2px*var(--u,1)) calc(8px*var(--u,1)) rgba(0,0,0,.25); }
+    .__hidden-banner { position:absolute; z-index:997; top:calc(26px*var(--pindeck-u,1)); right:calc(26px*var(--pindeck-u,1)); pointer-events:none;
+      background:#ED8C01; color:#fff; font:600 calc(12px*var(--pindeck-u,1))/calc(22px*var(--pindeck-u,1)) system-ui, sans-serif;
+      padding:0 calc(10px*var(--pindeck-u,1)); border-radius:calc(11px*var(--pindeck-u,1)); box-shadow:0 calc(2px*var(--pindeck-u,1)) calc(8px*var(--pindeck-u,1)) rgba(0,0,0,.25); }
     .__edit-hint { position:absolute; z-index:1003; pointer-events:none; white-space:nowrap; background:#1a73e8; color:#fff;
-      font:600 calc(11px*var(--u,1))/calc(17px*var(--u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--u,1));
-      border-radius:calc(3px*var(--u,1)); }`;
+      font:600 calc(11px*var(--pindeck-u,1))/calc(17px*var(--pindeck-u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--pindeck-u,1));
+      border-radius:calc(3px*var(--pindeck-u,1)); }`;
   document.head.appendChild(css);
 
   /* ---- Geometry ------------------------------------------------------------------ */
-  const slides = () => Reveal.getSlides();
+  const slides = () => deck.slides();
   const indexOf = (sec) => slides().indexOf(sec);
   const r1 = (v) => Math.round(v);
   function frame(sec) {
@@ -122,7 +128,7 @@
       hasFooter: !!sec.querySelector(".slide-foot"), hidden };
   }
   function info() {
-    return { slides: slides().map((s, i) => slideInfo(s, i)), current: indexOf(Reveal.getCurrentSlide()) };
+    return { slides: slides().map((s, i) => slideInfo(s, i)), current: indexOf(deck.current()) };
   }
 
   /* ---- Layout measurement ------------------------------------------------------------- */
@@ -138,7 +144,7 @@
       const hidden = cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0 || (b.w === 0 && b.h === 0);
       const leaf = !el.querySelector("[data-eid]");
       const own = el === sec ? "" : textOf(el, !leaf);
-      const tag = el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].filter((c) => !/^(fragment|visible|current-fragment|present|past|future)$/.test(c)).join(".") : "");
+      const tag = el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].filter((c) => !/^(fragment|visible|current-fragment|present|past|future)$/.test(c) && !c.startsWith("__")).join(".") : "");
       const e = { eid: el.dataset.eid || si.eid, tag: tag.replace(/\.$/, ""), depth, ...b };
       if (own && el.tagName !== "IMG" && el !== sec) e.font = fontOf(el);
       if (own) e.text = own;
@@ -218,13 +224,8 @@
   const nextFrame = () => Promise.resolve();
 
   /* ---- Navigation ------------------------------------------------------------------------ */
-  function goto(index) {
-    const sec = slides()[index];
-    if (!sec) return;
-    const ix = Reveal.getIndices(sec);
-    Reveal.slide(ix.h, ix.v);
-  }
-  function indices(index) { const sec = slides()[index]; return sec ? Reveal.getIndices(sec) : { h: 0, v: 0 }; }
+  const goto = (index) => deck.goto(index);
+  const presentHash = (index) => deck.hash(index);   // the slide's address in the deck opened on its own
 
   /* ---- Pins and hover ---------------------------------------------------------------------- */
   let mode = "select", pins = [], editable = true;   // mode: "select" (drag, resize) or "pin"
@@ -249,12 +250,12 @@
   }
   function targetOf(t) {
     if (!t || !t.closest) return null;
-    const sec = t.closest(".reveal .slides section");
+    const sec = t.closest(SLIDE);
     if (!sec || t.closest(".__pin, .__hover, .__sel, .__guide")) return null;
     const foot = t.closest(".slide-foot");
     const el = foot ? sec : t.closest("[data-eid]") || sec;
     const locked = foot ? "footer, set by brand.css (locked)" : el !== sec && el.matches(LOCKED_SEL) ? "positioned by brand.css (locked)" : null;
-    return { sec: el === sec ? sec : el.closest("section"), el, locked, foot };
+    return { sec: el === sec ? sec : el.closest(SLIDE_OF), el, locked, foot };
   }
   function onPointerDown(e) {
     if (MODE !== "main" || e.button !== 0) return;
@@ -309,7 +310,7 @@
     document.querySelectorAll(".__pin").forEach((p) => p.remove());
     for (const p of pins) {
       const sec = byEid(p.slide.eid);
-      if (!sec || sec.tagName !== "SECTION") continue;
+      if (!sec || !sec.matches(SLIDE_OF)) continue;
       let x = p.point.x, y = p.point.y;
       const el = p.eid !== p.slide.eid ? byEid(p.eid, sec) : null;
       if (el && el.getClientRects().length) {
@@ -328,8 +329,8 @@
   function highlight(eid) {
     const el = byEid(eid);
     if (!el) return;
-    const sec = el.tagName === "SECTION" ? el : el.closest("section");
-    if (sec !== Reveal.getCurrentSlide()) return;
+    const sec = el.closest(SLIDE_OF);
+    if (sec !== deck.current()) return;
     const b = boxOf(el, sec);
     const f = document.createElement("div");
     f.className = "__flash";
@@ -396,8 +397,8 @@
   }
   function selectEid(eid) {
     const el = eid && byEid(eid);
-    const sec = el?.closest("section");
-    if (!el || sec !== Reveal.getCurrentSlide()) return select(null, null);
+    const sec = el?.closest(SLIDE_OF);
+    if (!el || sec !== deck.current()) return select(null, null);
     select(el, sec);
   }
 
@@ -698,8 +699,8 @@
     const h = document.createElement("div");
     h.className = "__edit-hint";
     h.textContent = "Editing · Enter to save · Esc to cancel · Shift+Enter new line";
-    Object.assign(h.style, b.y < 30 ? { left: b.x + "px", top: `calc(${b.y + b.h}px + 6px*var(--u,1))` }
-      : { left: b.x + "px", top: `calc(${b.y}px - 22px*var(--u,1))` });
+    Object.assign(h.style, b.y < 30 ? { left: b.x + "px", top: `calc(${b.y + b.h}px + 6px*var(--pindeck-u,1))` }
+      : { left: b.x + "px", top: `calc(${b.y}px - 22px*var(--pindeck-u,1))` });
     editing.sec.appendChild(h);
   }
   function onEditKey(e) {
@@ -783,7 +784,7 @@
 
   /* A free id for a new bullet on the same slide ("summary/li-4"); the server double-checks. */
   function newBulletEid(el) {
-    const prefix = el.closest("section").dataset.eid;
+    const prefix = el.closest(SLIDE_OF).dataset.eid;
     const used = new Set([...document.querySelectorAll("[data-eid]")].map((e) => e.dataset.eid));
     let id = `${prefix}/li`, k = 2;
     while (used.has(id)) id = `${prefix}/li-${k++}`;
@@ -843,14 +844,169 @@
       })));
   }
 
+  /* ---- Decks -----------------------------------------------------------------------------------------
+     What the editor needs from a deck: its slides, the current one, going to a slide, the slide size and
+     scale, and events when the slide or the scale changes. reveal.js provides all of it. */
+  function revealDeck() {
+    const ix = (index) => { const sec = Reveal.getSlides()[index]; return sec ? Reveal.getIndices(sec) : { h: 0, v: 0 }; };
+    return {
+      slides: () => Reveal.getSlides(),
+      current: () => Reveal.getCurrentSlide(),
+      goto(index) { if (Reveal.getSlides()[index]) { const i = ix(index); Reveal.slide(i.h, i.v); } },
+      hash(index) { const i = ix(index); return `#/${i.h}${i.v ? "/" + i.v : ""}`; },
+      size: () => ({ width: Reveal.getConfig().width, height: Reveal.getConfig().height }),
+      scale: () => Reveal.getScale() || 1,
+      on: (ev, fn) => Reveal.on(ev === "slide" ? "slidechanged" : ev, fn),
+      prepare() {   // no transitions, every build step shown; the measure and headless copies fill their frame
+        const base = { transition: "none", backgroundTransition: "none", fragments: false };
+        if (MODE === "main") Reveal.configure({ ...base });
+        else Reveal.configure({ ...base, margin: 0, keyboard: false });
+      },
+      ready: (fn) => (Reveal.isReady() ? fn() : Reveal.on("ready", fn)),
+      keys() {},   // reveal.js's own keyboard handling stays
+    };
+  }
+
+  /* A deck made without reveal.js, whose slides <meta name="pindeck:slides"> names (and its size
+     <meta name="pindeck:size">). PinDeck shows the slides itself, one at a time and scaled to the frame,
+     over whatever the deck's own script does: the elements around the slides lose their transforms, a
+     backdrop covers the rest of the page, and the deck's script gets no keys while the editor has them.
+     The classes and styles added here live in the page only; the deck file is never written from the DOM. */
+  function selectorDeck() {
+    const root = document.documentElement;
+    const found = () => { const all = [...document.querySelectorAll(SLIDE_SEL)]; return all.filter((s) => !all.some((o) => o !== s && s.contains(o))); };
+    let list = [], cur = 0, scale = 1, sz = null;
+    const listeners = { slide: [], resize: [] };
+    const emit = (ev) => listeners[ev].forEach((fn) => fn());
+    function mark() {   // the slides, and the elements between them and <body>
+      list = found();
+      for (const s of list) {
+        s.classList.add("__pindeck_slide");
+        for (let a = s.parentElement; a && a !== document.body && a !== root; a = a.parentElement) a.classList.add("__pindeck_anc");
+      }
+    }
+    function size() {
+      if (sz) return sz;
+      mark();
+      const m = /^(\d{2,5})\s*[x×*,\s]\s*(\d{2,5})$/i.exec(deckMeta("size") || "");
+      const s = list[0];
+      sz = m ? { width: +m[1], height: +m[2] } : s?.offsetWidth && s.offsetHeight ? { width: s.offsetWidth, height: s.offsetHeight } : { width: 1280, height: 720 };
+      return sz;
+    }
+    // what takes a slide and its containers out of the deck's own layout (scaling, stacking, page views)
+    const LOOSE = "transform:none !important; translate:none !important; scale:none !important; rotate:none !important; " +
+      "zoom:1 !important; filter:none !important; backdrop-filter:none !important; perspective:none !important; " +
+      "contain:none !important; will-change:auto !important; opacity:1 !important; isolation:auto !important; " +
+      "mix-blend-mode:normal !important; clip-path:none !important; transition:none !important;";
+    function addStyle(text) { const st = document.createElement("style"); st.textContent = text; document.head.appendChild(st); }
+    function fit() {
+      const { width, height } = size(), m = MODE === "main" ? 0.04 : 0;   // the margin reveal.js leaves in the editor
+      scale = Math.min(innerWidth * (1 - m) / width, innerHeight * (1 - m) / height) || 1;
+      root.style.setProperty("--pindeck-s", String(scale));
+      root.style.setProperty("--pindeck-x", `${(innerWidth - width * scale) / 2}px`);
+      root.style.setProperty("--pindeck-y", `${(innerHeight - height * scale) / 2}px`);
+    }
+    // a slide the deck's own CSS hides with display: none is shown as a block
+    function display(s) { s.classList.remove("__pindeck_block"); if (getComputedStyle(s).display === "none") s.classList.add("__pindeck_block"); }
+    function show(i) {
+      const s = list[i];
+      if (!s) return false;
+      const changed = i !== cur;
+      list[cur]?.classList.remove("__pindeck_cur");
+      cur = i;
+      s.classList.add("__pindeck_cur");
+      s.removeAttribute("inert"); s.removeAttribute("hidden");   // the deck's script marks the slides it does not show
+      display(s);
+      return changed;
+    }
+    return {
+      slides: () => list,
+      current: () => list[cur],
+      goto(index) { if (show(index)) emit("slide"); },
+      hash(index) { const s = list[index]; return s?.id ? `#${encodeURIComponent(s.id)}` : `#${index + 1}`; },
+      size,
+      scale: () => scale,
+      on: (ev, fn) => listeners[ev]?.push(fn),
+      prepare() {
+        const { width, height } = size();
+        addStyle(`
+          html.__pindeck_deck, html.__pindeck_deck body { overflow:hidden !important; }
+          html.__pindeck_deck .__pindeck_anc { ${LOOSE} position:static !important; z-index:auto !important; }
+          html.__pindeck_deck .__pindeck_slide:not(.__pindeck_cur) { visibility:hidden !important; }
+          html.__pindeck_deck .__pindeck_slide.__pindeck_cur { ${LOOSE} position:fixed !important; inset:0 auto auto 0 !important;
+            margin:0 !important; width:${width}px !important; height:${height}px !important; min-width:0 !important; min-height:0 !important;
+            max-width:none !important; max-height:none !important; transform-origin:0 0 !important;
+            transform:translate(var(--pindeck-x, 0px), var(--pindeck-y, 0px)) scale(var(--pindeck-s, 1)) !important;
+            visibility:visible !important; z-index:2147483001 !important; }
+          html.__pindeck_deck .__pindeck_slide.__pindeck_block { display:block !important; }
+          html.__pindeck_deck .__pindeck_backdrop { position:fixed; inset:0; z-index:2147483000; background:var(--pindeck-bg, #fff); }
+          html.__pindeck_deck aside.notes { display:none !important; }`);
+        // the backdrop has the page's own background
+        const bg = [document.body, root].map((e) => getComputedStyle(e).backgroundColor).find((c) => !/^(transparent|rgba\(.*,\s*0\))$/.test(c));
+        if (bg) root.style.setProperty("--pindeck-bg", bg);
+        const backdrop = document.createElement("div");
+        backdrop.className = "__pindeck_backdrop";
+        document.body.appendChild(backdrop);
+        root.classList.add("__pindeck_deck");
+        fit();
+        show(cur);
+        addEventListener("resize", () => { fit(); emit("resize"); });
+        // the deck's script may hide the slide again (when it changes slides itself)
+        new MutationObserver((recs) => { if (recs.some((r) => r.target === list[cur])) { list[cur].removeAttribute("inert"); list[cur].removeAttribute("hidden"); display(list[cur]); } })
+          .observe(document.body, { subtree: true, attributes: true, attributeFilter: ["inert", "hidden", "style"] });
+      },
+      ready: (fn) => (document.readyState === "complete" ? fn() : addEventListener("load", () => fn(), { once: true })),
+      keys() {   // after the editor's own key handler: slide keys change the slide here, and the deck's script gets none
+        const field = (t) => t.closest?.("input, textarea, select, [contenteditable]");
+        const STEP = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
+        addEventListener("keydown", (e) => {
+          if (field(e.target)) return;
+          if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+            const k = e.key, step = k === " " ? (e.shiftKey ? -1 : 1) : STEP[k];
+            const to = step ? cur + step : k === "Home" ? 0 : k === "End" ? list.length - 1 : null;
+            if (to != null) { e.preventDefault(); this.goto(Math.max(0, Math.min(list.length - 1, to))); }
+          }
+          e.stopImmediatePropagation();
+        }, true);
+        for (const t of ["keyup", "keypress"]) addEventListener(t, (e) => { if (!field(e.target)) e.stopImmediatePropagation(); }, true);
+      },
+      /* ?editor=pdf: every slide as a page of its own size, for PinDeck's PDF export (lib/pdf.mjs prints
+         this page's DOM as it is once laid out, so the layout is all CSS) */
+      print() {
+        const { width, height } = size();
+        const all = params.get("showHiddenSlides") === "true";
+        const shown = list.filter((s) => all || s.getAttribute("data-visibility") !== "hidden");
+        for (const s of list) { s.classList.add("pdf-page"); if (!shown.includes(s)) s.classList.add("__pindeck_skip"); }
+        shown.at(-1)?.classList.add("__pindeck_last");
+        const OUT = ":not(.__pindeck_anc):not(.__pindeck_slide)";
+        addStyle(`
+          @page { size:${width}px ${height}px; margin:0; }
+          html.__pindeck_print, html.__pindeck_print body { margin:0 !important; padding:0 !important; width:auto !important;
+            height:auto !important; overflow:visible !important; }
+          html.__pindeck_print .__pindeck_anc { ${LOOSE} position:static !important; display:block !important; width:auto !important;
+            height:auto !important; margin:0 !important; padding:0 !important; border:0 !important; overflow:visible !important; }
+          html.__pindeck_print body > ${OUT}:not(svg), html.__pindeck_print .__pindeck_anc > ${OUT}:not(svg) { display:none !important; }
+          html.__pindeck_print body > svg${OUT}, html.__pindeck_print .__pindeck_anc > svg${OUT} { position:absolute !important;
+            width:0 !important; height:0 !important; overflow:hidden !important; }
+          html.__pindeck_print .__pindeck_slide { ${LOOSE} position:relative !important; inset:auto !important; margin:0 !important;
+            width:${width}px !important; height:${height}px !important; max-width:none !important; max-height:none !important;
+            visibility:visible !important; overflow:hidden !important; break-inside:avoid; break-after:page; page-break-after:always; }
+          html.__pindeck_print .__pindeck_slide.__pindeck_last { break-after:auto; page-break-after:auto; }
+          html.__pindeck_print .__pindeck_slide.__pindeck_block { display:block !important; }
+          html.__pindeck_print .__pindeck_skip { display:none !important; }
+          html.__pindeck_print aside.notes { display:none !important; }`);
+        root.classList.add("__pindeck_print");
+        shown.forEach(display);
+      },
+    };
+  }
+
   /* ---- Start ------------------------------------------------------------------------------------- */
   async function start() {
-    W = Reveal.getConfig().width; H = Reveal.getConfig().height;
-    const base = { transition: "none", backgroundTransition: "none", fragments: false };
-    const setUnit = () => document.documentElement.style.setProperty("--u", String(1 / (Reveal.getScale() || 1)));
-    Reveal.on("resize", setUnit);
-    if (MODE === "main") Reveal.configure({ ...base });
-    else Reveal.configure({ ...base, margin: 0, keyboard: false });
+    ({ width: W, height: H } = deck.size());
+    const setUnit = () => document.documentElement.style.setProperty("--pindeck-u", String(1 / (deck.scale() || 1)));
+    deck.on("resize", setUnit);
+    deck.prepare();
     setUnit();
     await document.fonts.ready;
 
@@ -872,11 +1028,11 @@
     }
 
     const api = {
-      info, goto, indices, highlight, reloadCss,
+      info, goto, presentHash, highlight, reloadCss,
       setMode, selectEid, nudge, editSelection,
       // a new slide: select its title and open it for typing
       editTitle() {
-        const sec = Reveal.getCurrentSlide();
+        const sec = deck.current();
         const h = sec?.querySelector("h1[data-eid], h2[data-eid], h3[data-eid]");
         if (!h || mode !== "select") return;
         select(h, sec);
@@ -942,22 +1098,29 @@
           host()?.key(k, { meta, shift: e.shiftKey });
         }
       }, true);
-      Reveal.on("slidechanged", () => { if (editing) finishEdit(true); hideHover(); if (sel) select(null, null); host()?.slideChanged(indexOf(Reveal.getCurrentSlide())); });
-      Reveal.on("resize", () => { if (sel) drawSel(); });
+      deck.on("slide", () => { if (editing) finishEdit(true); hideHover(); if (sel) select(null, null); host()?.slideChanged(indexOf(deck.current())); });
+      deck.on("resize", () => { if (sel) drawSel(); });
       setMode("select");
       // a banner on hidden slides, so nobody edits one without noticing (only in the editor view)
       for (const sec of slides()) {
         if (sec.getAttribute("data-visibility") !== "hidden") continue;
         const b = document.createElement("div");
         b.className = "__hidden-banner";
-        b.textContent = "Hidden slide · skipped when presenting and in PDFs";
+        b.textContent = SLIDE_SEL ? "Hidden slide · skipped in PDFs" : "Hidden slide · skipped when presenting and in PDFs";
         sec.appendChild(b);
       }
       const startAt = +params.get("start");
       if (startAt) goto(startAt);
+      deck.keys();
     }
     host()?.bridgeReady(MODE, api, window);
   }
-  if (typeof Reveal === "undefined") return;
-  if (Reveal.isReady()) start(); else Reveal.on("ready", start);
+  if (SLIDE_SEL) {
+    deck = selectorDeck();
+    deck.ready(() => (MODE === "pdf" ? deck.print() : start()));
+    return;
+  }
+  if (typeof Reveal === "undefined" || MODE === "pdf") return;   // reveal.js lays out its own print view
+  deck = revealDeck();
+  deck.ready(start);
 })();

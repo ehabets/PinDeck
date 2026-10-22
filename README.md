@@ -58,7 +58,8 @@ first. Options: `--port 5180`, `--model <name>` (for this run only; otherwise th
 
 ## Preparing a deck
 
-PinDeck works with reveal.js decks whose slides are `<section>` elements inside `.slides`. Two
+PinDeck works with reveal.js decks whose slides are `<section>` elements inside `.slides`, and with other
+decks that name their slides (see [Decks made without reveal.js](#decks-made-without-revealjs)). Two
 optional `<meta>` tags in the deck's `<head>` tell it about the design:
 
 ```html
@@ -72,6 +73,34 @@ numbers will jump where a slide is hidden.
 
 Without them PinDeck runs no footer check and locks only `.slide-foot` and `.logo`. A file called
 `brand.css` in the deck folder is locked for Claude. See `ocean-example/` for a complete deck.
+
+### Decks made without reveal.js
+
+A deck with a script of its own, or made with a framework whose slides are elements of their own
+(Shower, deck.js, a hand-written deck), can be edited too once it names its slides in its `<head>`:
+
+```html
+<meta name="pindeck:slides" content="main.deck > section.slide">  <!-- a CSS selector for the slides -->
+<meta name="pindeck:size" content="1440x1080">                     <!-- their size in px -->
+```
+
+The selector may use tag names, `#id`, `.class`, `[attr]` and `[attr="value"]`, joined by spaces or `>`,
+and a list of them separated by commas. In the editor, PinDeck shows the slides itself, one at a time and
+scaled to the window, and switches off the deck's own scaling, slide keys and inert or hidden marks while
+you edit; that changes nothing in the deck file. Everything in [Working with it](#working-with-it) works as
+with a reveal.js deck, with these differences:
+
+* Build steps (`.fragment`) belong to reveal.js: other decks show every element at once.
+* Hidden slides (`data-visibility="hidden"`) are left out of PinDeck's PDF exports; whether presenting
+  skips them is up to the deck's own script.
+* Speaker notes are an `<aside class="notes">` in the slide, as in reveal.js. PinDeck hides them in the
+  editor; the deck's CSS should hide them too (`aside.notes { display: none }`).
+* **Present** opens the deck at `#<slide id>`, or `#<number>` for a slide without an id.
+* **＋ New slide** models a new slide on the deck's own (see [Making your own template](#making-your-own-template)):
+  a content slide gets placeholder bullets in a `.slide-body`; without one it has only its title.
+
+Without `pindeck:size`, PinDeck uses the size of the first slide as the deck lays it out. A selector that
+finds no slides, or one PinDeck cannot read, is reported before anything changes.
 
 ## Making your own template
 
@@ -346,8 +375,10 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Current Limitations
 
-* reveal.js decks only. A deck made with another framework (Marp, Slidev, impress.js, remark, Spectacle,
-  Shower, deck.js, bespoke.js) is recognised and refused with its name before PinDeck changes anything.
+* reveal.js decks, and decks that name their slides with `<meta name="pindeck:slides">` (see [Decks made
+  without reveal.js](#decks-made-without-revealjs)). Any other deck made with another framework (Marp, Slidev,
+  impress.js, remark, Spectacle, Shower, deck.js, bespoke.js) is recognised and refused with its name before
+  PinDeck changes anything.
 * Text inside inline SVG diagrams cannot be edited in place; pin it and ask Claude.
 * Parts of an inline SVG move with the whole SVG; inline text (bold, spans) moves with its block.
 * No indenting or outdenting of bullets with `Tab` yet, and `Backspace` at the start of a bullet does not merge it with the one above; ask Claude for those.
