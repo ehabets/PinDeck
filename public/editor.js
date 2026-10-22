@@ -492,8 +492,7 @@ $("export-menu").addEventListener("click", async (e) => {
 });
 
 $("present").onclick = () => {
-  const ix = main?.bridge.indices(state.current) || { h: 0, v: 0 };
-  window.open(`/deck/#/${ix.h}${ix.v ? "/" + ix.v : ""}`, "_blank");
+  window.open(`/deck/${main?.bridge.presentHash(state.current) || ""}`, "_blank");
 };
 
 /* ---- Pins --------------------------------------------------------------------------------------- */
