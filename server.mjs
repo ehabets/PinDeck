@@ -166,6 +166,13 @@ function deckSlides() {
   const selector = slideSelector(tree);
   return { selector, size: (selector && deckSize(tree)) || { width: 1280, height: 720 } };
 }
+/* Why the deck no longer names slides PinDeck can use (a tag changed while PinDeck runs), or null: the
+   start-up check's message, which the editor shows and Claude is told */
+function deckProblemNow() {
+  const html = readDeck(DECK_FILE);
+  return (html != null && unsupportedMessage(html, DECK_FILE)?.replace(/ Nothing was changed\.$/, "")) || null;
+}
+let deckNow = { selector: deckSlides().selector, problem: null };   // for the editor; kept current by scheduleFlush
 const ourWrites = new Map(); // file -> { hash, manual } of what we wrote, to tell our writes from others
 function writeDeck(f, content, manual = false) {
   ourWrites.set(f, { hash: hash(content), manual });
@@ -472,6 +479,7 @@ if (MODEL) settings.model = MODEL;   // --model on the command line: this run on
 
 const status = () => ({ busy: state.busy, model: state.model, sessionId: state.sessionId, settings: { ...settings },
   running: session.running, deck: DECK_DIR, deckFile: DECK_FILE, chrome: CAPS.screenshot.available,
+  slideSelector: deckNow.selector, deckProblem: deckNow.problem,
   capabilities: publicCapabilities(CAPS), rev: deckRev(),
   undo: changeLabel(liveTurns().at(-1)), redo: changeLabel(state.redo.at(-1)) });
 const pushStatus = () => broadcast("status", status());
@@ -782,6 +790,14 @@ function scheduleFlush() {
         runEidPass();
       };
       eidTimer = setTimeout(pass, 800);
+    }
+    if (files.includes(DECK_FILE)) {   // the slide tags, by hand or by Claude: tell both when they stop working
+      const now = { selector: deckSlides().selector, problem: deckProblemNow() };
+      if (now.selector !== deckNow.selector || now.problem !== deckNow.problem) {
+        if (now.problem) state.notes = [...new Set([...state.notes, `PinDeck cannot use the deck's slides now: ${now.problem}`])];
+        deckNow = now;
+        pushStatus();
+      }
     }
     // manual: only drag/resize writes, which the browser already shows; no reload of the visible slide
     broadcast("files", { files, manual, rev: deckRev() });
@@ -1291,14 +1307,16 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       if (staleEdit(res, b)) return;
       const before = snapshot(EDITABLE);
-      const slides = findSlides(parse(before[DECK_FILE]));
+      const tree = parse(before[DECK_FILE]), slides = findSlides(tree);
       const index = slides.findIndex((s) => s.attrs["data-eid"]?.value === b.eid);
       if (index < 0) return json(res, 404, { error: "Slide not found in the file." });
       const r = setAttr(before[DECK_FILE], b.eid, "data-visibility", b.hidden ? "hidden" : null);
       if (!r.changed) return json(res, 200, { unchanged: true });
+      const skipped = slideSelector(tree) ? "left out of PDF exports (whether presenting skips them depends on the deck's script)"
+        : "skipped when presenting and in PDF exports";
       const turnId = recordHandEdit(before, r.html, `${b.hidden ? "Hid" : "Showed"} slide ${index + 1}`,
         `The user ${b.hidden ? "hid" : "showed again"} slide ${index + 1} (${b.eid}). Hidden slides carry ` +
-        `data-visibility="hidden": they stay in the file but are skipped when presenting and in PDF exports.`,
+        `data-visibility="hidden": they stay in the file but are ${skipped}.`,
         { manual: true, chat: false });   // the editor reloads the slide itself; undo is in the toolbar
       return json(res, 200, { turnId, index });
     }
@@ -1539,11 +1557,13 @@ const server = http.createServer(async (req, res) => {
       return text(res, r.status || 200, r.text);
     }
     if (p === "/api/slides") {
-      return text(res, 200, slideList().map((s) => `${String(s.index + 1).padStart(2)}  ${s.eid}`).join("\n"));
+      const list = slideList(), why = !list.length && deckProblemNow();
+      if (why) return text(res, 409, why);
+      return text(res, 200, list.map((s) => `${String(s.index + 1).padStart(2)}  ${s.eid}`).join("\n"));
     }
     if (p === "/api/layout" || p === "/api/shot") {
       const slide = resolveSlide(url.searchParams.get("slide"));
-      if (!slide) return text(res, 404, `No slide "${url.searchParams.get("slide")}". Use \`${CLI_CMD} slides\`.`);
+      if (!slide) return text(res, 404, deckProblemNow() || `No slide "${url.searchParams.get("slide")}". Use \`${CLI_CMD} slides\`.`);
       if (!slide.eid) runEidPass();
       const s2 = slide.eid ? slide : resolveSlide(String(slide.index + 1));
       if (p === "/api/shot") {

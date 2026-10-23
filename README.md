@@ -98,13 +98,15 @@ with a reveal.js deck, with these differences:
 * **Present** opens the deck at `#<slide id>`, or `#<number>` (counting from 1) for a slide without an id.
   Present may open on the first slide if the deck does not go to slides by their address.
 * **＋ New slide** models a new slide on the deck's own (see [Making your own template](#making-your-own-template)):
-  a content slide gets placeholder bullets in a `.slide-body`; without one it has only its title.
+  a content slide gets placeholder bullets in a `.slide-body`; without one it has only its title. A new or
+  duplicated slide does not take the original's `id`.
 
 Both tags are needed: PinDeck opens the slides at the given size for screenshots and PDF pages. A missing
 size, or a selector that finds no slides or that PinDeck cannot read, is reported before anything changes.
 While PinDeck runs, it reads the tags again for every screenshot, PDF and Claude session; the editor reads
-them when the slide reloads. A Claude session already running keeps the slide selector it started with;
-**New chat** starts one with the new selector.
+them when the slide reloads. If a tag stops working meanwhile, the editor shows the same message and Claude
+is told. A Claude session already running keeps the slide selector it started with; **New chat** starts one
+with the new selector.
 
 ## Making your own template
 

@@ -1098,7 +1098,13 @@
           host()?.key(k, { meta, shift: e.shiftKey });
         }
       }, true);
-      deck.on("slide", () => { if (editing) finishEdit(true); hideHover(); if (sel) select(null, null); host()?.slideChanged(indexOf(deck.current())); });
+      deck.on("slide", () => {
+        if (editing) finishEdit(true); hideHover(); if (sel) select(null, null);
+        // a deck made without reveal.js lays out only the current slide at the slide size: pins on the
+        // others were placed in another layout
+        if (SLIDE_SEL) renderPins(pins);
+        host()?.slideChanged(indexOf(deck.current()));
+      });
       deck.on("resize", () => { if (sel) drawSel(); });
       setMode("select");
       // a banner on hidden slides, so nobody edits one without noticing (only in the editor view)

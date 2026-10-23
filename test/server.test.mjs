@@ -462,6 +462,38 @@ test("Slide meta tags added while PinDeck runs count from the next print view an
   assert.match(promptOf(next), /## Slides of this deck\n.*CSS selector `\.reveal \.slides section`/);
 });
 
+test("A slide tag that stops working while PinDeck runs: the editor and Claude are told why", async (t) => {
+  const fx = selectorFixture(t);
+  const s = await startServer(t, fx);
+  const status = async () => (await s.api("status")).data;
+  assert.equal((await status()).slideSelector, "main.deck > section.slide");
+  assert.equal((await status()).deckProblem, null);
+  assert.equal((await s.api("slide-hidden", { eid: "a-figure", hidden: true })).status, 200);
+
+  externalEdit(fx.deck, "index.html", (h) => h.replace('content="main.deck > section.slide"', 'content="main.deck > section:not(.x)"'));
+  const problem = await waitFor(async () => (await status()).deckProblem, "the problem in the editor's status");
+  assert.match(problem, /^index\.html: the slide selector "main\.deck > section:not\(\.x\)" in <meta name="pindeck:slides"> cannot be used: .*not supported/);
+  assert.doesNotMatch(problem, /Nothing was changed/, "only true at start");
+  const slides = await s.api("slides");
+  assert.equal(slides.status, 409);
+  assert.equal(slides.data, problem);
+  const layout = await s.api("layout?slide=1");
+  assert.equal(layout.status, 404);
+  assert.equal(layout.data, problem);
+
+  // Claude hears of both with the next message, in words that fit a deck made without reveal.js
+  assert.equal((await s.api("message", { text: "hello" })).status, 200);
+  const told = (await waitFor(() => fakeLog(fx).find((e) => e.event === "user"), "Claude to get the message")).text;
+  assert.ok(told.includes(`PinDeck cannot use the deck's slides now: ${problem}`));
+  assert.match(told, /left out of PDF exports \(whether presenting skips them depends on the deck's script\)/);
+  assert.doesNotMatch(told, /skipped when presenting/);
+
+  await waitFor(async () => !(await status()).busy, "the turn to end");
+  externalEdit(fx.deck, "index.html", (h) => h.replace("section:not(.x)", "section.slide"));
+  await waitFor(async () => (await status()).deckProblem === null, "the problem to clear");
+  assert.equal((await s.api("slides")).status, 200);
+});
+
 test("A deck whose slide selector finds nothing, or that gives no slide size: refused, and the file is left as it is", async (t) => {
   const fx = selectorFixture(t);
   const file = path.join(fx.deck, "index.html");

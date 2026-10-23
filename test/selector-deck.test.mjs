@@ -63,6 +63,11 @@ test("new, moved and annotated slides keep the deck's own structure", () => {
   assert.equal(findSlides(parse(after)).length, 4);
   assert.match(after.slice(after.indexOf("Second point")), /<section class="slide"[^>]*>\s*<h1[^>]*>New Slide<\/h1>/);
   assert.equal(findSlides(parse(assignEids(insertSlide(html, "duplicate", "a-figure").html).html)).length, 4);
+  // such decks (and Present) go to slides by their id: a new or duplicated slide does not take the original's
+  for (const kind of ["content", "duplicate"]) {
+    const ids = findSlides(parse(insertSlide(html, kind, "points").html)).map((s) => s.attrs.id?.value ?? null);
+    assert.deepEqual(ids, ["s-title", "s-points", null, "s-figure"], kind);
+  }
 
   const toEnd = moveSlide(html, "a-deck-without-reveal", null);
   assert.deepEqual(eidsOf(toEnd.html), ["points", "a-figure", "a-deck-without-reveal"]);
