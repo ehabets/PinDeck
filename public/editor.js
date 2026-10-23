@@ -229,7 +229,8 @@ function renderSlides() {
         ${s.kind !== "content" ? `<span class="kind">${esc(s.kind.replace(/-slide$/, ""))}</span>` : ""}
         ${s.hidden ? '<span class="kind hid">hidden</span>' : ""}</span>
       ${counts[i] ? `<span class="badge" title="${counts[i]} pin(s)">${counts[i]}</span>` : "<span></span>"}
-      <button class="eye" data-eye="${i}" title="${s.hidden ? "Show this slide again" : "Hide this slide (skipped when presenting)"}"
+      <button class="eye" data-eye="${i}" title="${s.hidden ? "Show this slide again" : state.status?.slideSelector ?
+        "Hide this slide (left out of PDFs)" : "Hide this slide (skipped when presenting)"}"
         aria-label="${s.hidden ? "Show" : "Hide"} slide ${i + 1}">${s.hidden ? EYE_ICON : EYE_OFF_ICON}</button>
     </li>`).join("");
   $("slide-list").querySelector("li.active")?.scrollIntoView({ block: "nearest" });
@@ -492,8 +493,7 @@ $("export-menu").addEventListener("click", async (e) => {
 });
 
 $("present").onclick = () => {
-  const ix = main?.bridge.indices(state.current) || { h: 0, v: 0 };
-  window.open(`/deck/#/${ix.h}${ix.v ? "/" + ix.v : ""}`, "_blank");
+  window.open(`/deck/${main?.bridge.presentHash(state.current) || ""}`, "_blank");
 };
 
 /* ---- Pins --------------------------------------------------------------------------------------- */
@@ -739,6 +739,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ---- Server events ---------------------------------------------------------------------------------- */
+let shownProblem = null;   // the deck problem last shown, so a status update does not repeat it
 function applyStatus(s) {
   state.status = s;
   // the deck's name in the header ("ocean-example", or "talk.html" for a named deck file), its full path on hover
@@ -777,6 +778,9 @@ function applyStatus(s) {
   $("server-note").textContent = caps.label ? `Server: ${caps.label}` : "";
   $("server-note").title = off.length ? `Not available on this server:\n${off.join("\n")}\n\nWhy:\n${reasons.join("\n")}` : "";
   $("add-slide-btn").disabled = !!s.busy;
+  // the deck's slide tags stopped working while PinDeck runs (at start, such a deck is refused)
+  if (s.deckProblem && s.deckProblem !== shownProblem) toast(s.deckProblem, { ms: 20000 });
+  shownProblem = s.deckProblem;
   renderToolbar();
 }
 function connect() {

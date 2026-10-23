@@ -36,6 +36,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   log({ event: "input", type: msg.type, subtype: msg.request?.subtype });
   if (msg.type !== "user") return;
   const text = (msg.message?.content || []).map((c) => c.text || "").join(" ");
+  log({ event: "user", text });   // what Claude is told, notes from PinDeck included
   if (mode === "garbage") process.stdout.write("not json\n{\"type\":\"assist");   // a partial line, completed below
   if (mode === "garbage") process.stdout.write("\n");
   if (/edit theme/.test(text)) fs.appendFileSync(path.join(process.cwd(), "theme.css"), "\n/* fake claude edit */\n");

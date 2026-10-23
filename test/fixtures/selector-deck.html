@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="pindeck:slides" content="main.deck > section.slide">
+<meta name="pindeck:size" content="1024x768">
+<title>A deck without reveal.js</title>
+<style>
+  body { margin: 0; background: #444; }
+  .deck { position: fixed; left: 0; top: 0; width: 1024px; height: 768px; transform-origin: 0 0; --u: 1px; }
+  .slide { position: absolute; inset: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 48px;
+    background: #fff; font: calc(24 * var(--u)) / 1.4 sans-serif; visibility: hidden; }
+  .slide.on { visibility: visible; }
+  .slide h1 { margin: 0 0 24px; font-size: 40px; }
+  aside.notes { display: none; }
+</style>
+</head>
+<body>
+<main class="deck">
+<section class="slide slide--title" id="s-title">
+  <h1>A deck without reveal.js</h1>
+  <p class="byline">Its own script shows one slide at a time</p>
+</section>
+
+<section class="slide" id="s-points">
+  <h1>Points</h1>
+  <ul class="points">
+    <li>First point</li>
+    <li>Second point</li>
+  </ul>
+</section>
+
+<section class="slide" id="s-figure">
+  <h1>A figure</h1>
+  <figure class="fig"><svg viewBox="0 0 200 100" width="400" height="200"><rect x="10" y="10" width="180" height="80" fill="#9cf"/></svg>
+    <figcaption>A box</figcaption></figure>
+</section>
+</main>
+<nav class="dock">&larr; &rarr;</nav>
+<script>
+  // the deck's own runtime: the deck scaled to the window, one slide at a time, the others inert, arrow keys
+  const deck = document.querySelector(".deck"), slides = [...deck.querySelectorAll(":scope > .slide")];
+  let cur = 0;
+  function fit() { deck.style.transform = `scale(${Math.min(innerWidth / 1024, innerHeight / 768)})`; }
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => { s.classList.toggle("on", j === cur); s.inert = j !== cur; });
+  }
+  addEventListener("keydown", (e) => { if (e.key === "ArrowRight") show(cur + 1); if (e.key === "ArrowLeft") show(cur - 1); });
+  addEventListener("resize", fit);
+  fit(); show(0);
+</script>
+</body>
+</html>

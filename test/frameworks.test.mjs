@@ -39,6 +39,6 @@ test("plain HTML: no framework, and the message says what PinDeck looks for", ()
   assert.deepEqual(detectFramework(html), { name: null, supported: false });
   assert.match(unsupportedMessage(html, "notes.html"), /^notes\.html has no reveal\.js slides \(a <div class="reveal">/);
   assert.match(unsupportedMessage(page("", '<div class="marpit"></div>'), "talk.html"),
-    /^talk\.html is a Marp deck\. PinDeck works with reveal\.js decks only for now; other frameworks may follow\. Nothing was changed\.$/);
+    /^talk\.html is a Marp deck\. PinDeck works with reveal\.js decks; other frameworks may follow\. A deck made otherwise can name its slides in its <head>: <meta name="pindeck:slides" content="[^"]+"> .*Nothing was changed\.$/);
   assert.equal(unsupportedMessage(page("", '<div class="reveal"><div class="slides"><section>A</section></div></div>'), "x.html"), null);
 });
