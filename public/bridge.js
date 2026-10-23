@@ -885,12 +885,12 @@
         for (let a = s.parentElement; a && a !== document.body && a !== root; a = a.parentElement) a.classList.add("__pindeck_anc");
       }
     }
-    function size() {
+    function size() {   // the first call also finds the slides
       if (sz) return sz;
       mark();
+      // the server refuses a deck without a readable size, so the fallback is only for a tag removed meanwhile
       const m = /^(\d{2,5})\s*[x×*,\s]\s*(\d{2,5})$/i.exec(deckMeta("size") || "");
-      const s = list[0];
-      sz = m ? { width: +m[1], height: +m[2] } : s?.offsetWidth && s.offsetHeight ? { width: s.offsetWidth, height: s.offsetHeight } : { width: 1280, height: 720 };
+      sz = m ? { width: +m[1], height: +m[2] } : { width: 1280, height: 720 };
       return sz;
     }
     // what takes a slide and its containers out of the deck's own layout (scaling, stacking, page views)

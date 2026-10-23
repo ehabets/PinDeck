@@ -78,9 +78,15 @@ test("new, moved and annotated slides keep the deck's own structure", () => {
 test("frameworks: a deck that names its slides is supported, and the messages say what to do", () => {
   assert.deepEqual(detectFramework(DECK), { name: "selector", selector: "main.deck > section.slide", supported: true });
   // the meta tag wins over a framework's markup: a Shower deck that names its slides is edited too
-  const shower = page(meta(".shower > section.slide"), '<div class="shower list"><section class="slide">Hi</section></div>');
+  const shower = page(meta(".shower > section.slide", "1024x768"), '<div class="shower list"><section class="slide">Hi</section></div>');
   assert.equal(detectFramework(shower).supported, true);
   assert.equal(unsupportedMessage(DECK, "talk.html"), null);
+  // the size is needed too: headless Chrome and the PDF pages use it
+  const slides = '<main class="deck"><section class="slide">x</section></main>';
+  assert.equal(detectFramework(page(meta("main.deck > section.slide"), slides)).supported, false);
+  for (const size of [null, "wide"])
+    assert.match(unsupportedMessage(page(meta("main.deck > section.slide", size), slides), "talk.html"),
+      /^talk\.html: <meta name="pindeck:size"> is missing or not a size such as content="1440x1080" .*Nothing was changed\.$/);
   assert.match(unsupportedMessage(page(meta("main > section.page"), "<main><section>x</section></main>"), "talk.html"),
     /^talk\.html: the slide selector "main > section\.page" in <meta name="pindeck:slides"> matches no elements\. Nothing was changed\.$/);
   assert.match(unsupportedMessage(page(meta("section:first-child"), ""), "talk.html"), /cannot be used: .*not supported/);
