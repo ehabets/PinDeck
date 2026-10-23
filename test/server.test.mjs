@@ -446,7 +446,23 @@ test("A reveal.js deck's print view has no editor bridge: reveal.js lays out its
   assert.doesNotMatch(start.argv[start.argv.indexOf("--append-system-prompt") + 1], /## Slides of this deck/);
 });
 
-test("A deck whose slide selector finds nothing: refused, and the file is left as it is", async (t) => {
+test("Slide meta tags added while PinDeck runs count from the next print view and Claude session", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const printView = async () => (await fetch(`${s.url}/deck/?editor=pdf`, { headers: { "x-editor-token": s.token } })).text();
+  const starts = () => fakeLog(fx).filter((e) => e.event === "start");
+  const promptOf = (e) => e.argv[e.argv.indexOf("--append-system-prompt") + 1];
+  await waitFor(() => starts().length === 1, "Claude to start");
+  externalEdit(fx.deck, "index.html", (h) => h.replace("<head>",
+    '<head>\n<meta name="pindeck:slides" content=".reveal .slides section">\n<meta name="pindeck:size" content="1280x720">'));
+  assert.match(await printView(), /editor\/bridge\.js/, "the print view follows the file");
+  assert.doesNotMatch(promptOf(starts()[0]), /## Slides of this deck/, "the running session keeps its instructions");
+  assert.equal((await s.api("new-chat", {})).status, 200);
+  const next = await waitFor(() => starts()[1], "a new Claude session");
+  assert.match(promptOf(next), /## Slides of this deck\n.*CSS selector `\.reveal \.slides section`/);
+});
+
+test("A deck whose slide selector finds nothing, or that gives no slide size: refused, and the file is left as it is", async (t) => {
   const fx = selectorFixture(t);
   const file = path.join(fx.deck, "index.html");
   const html = fs.readFileSync(file, "utf8").replace('content="main.deck > section.slide"', 'content="main.deck > section.page"');
@@ -455,6 +471,13 @@ test("A deck whose slide selector finds nothing: refused, and the file is left a
   assert.equal(r.code, 1);
   assert.match(r.output, /index\.html: the slide selector "main\.deck > section\.page" in <meta name="pindeck:slides"> matches no elements\. Nothing was changed\./);
   assert.equal(fs.readFileSync(file, "utf8"), html, "no ids added");
+
+  const unsized = fs.readFileSync(SELECTOR_DECK, "utf8").replace(/<meta name="pindeck:size"[^>]*>\n/, "");
+  fs.writeFileSync(file, unsized);
+  const r2 = await failedStart(t, fx);
+  assert.equal(r2.code, 1);
+  assert.match(r2.output, /index\.html: <meta name="pindeck:size"> is missing .*Nothing was changed\./);
+  assert.equal(fs.readFileSync(file, "utf8"), unsized, "no ids added");
 });
 
 /* ---- Files outside the deck folder (--asset-root) and symlinks ----------------------------------- */

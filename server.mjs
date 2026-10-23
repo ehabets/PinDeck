@@ -130,10 +130,6 @@ if (frameworkProblem) {
   console.error(frameworkProblem);
   process.exit(1);
 }
-/* A deck made without reveal.js names its slides with <meta name="pindeck:slides"> (null for reveal.js);
-   headless Chrome then opens it at the slide size, so a screenshot is the slide itself. */
-const DECK_SELECTOR = slideSelector(parse(deckAtStart));
-const SLIDE_SIZE = (DECK_SELECTOR && deckSize(parse(deckAtStart))) || { width: 1280, height: 720 };
 /* Runtime files hold the token, the chat and attachments: private to the user. Written only after the
    port is bound (see Start), so a failed start leaves no state behind. */
 const SERVER_FILES = [path.join(STATE_DIR, "server.json"), path.join(HOME_DIR, "server.json")];   // the second: the CLI's fallback
@@ -161,6 +157,15 @@ const MIME = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8",
   mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", pdf: "application/pdf", md: "text/plain; charset=utf-8" };
 const hash = (s) => crypto.createHash("sha1").update(s).digest("hex");
 const readDeck = (f) => { try { return fs.readFileSync(path.join(DECK_DIR, f), "utf8"); } catch { return null; } };
+/* A deck made without reveal.js names its slides with <meta name="pindeck:slides"> (null for reveal.js) and
+   their size with <meta name="pindeck:size">. Read from the deck as it is now, so a changed tag counts from
+   the next headless run or Claude session. Headless Chrome opens such a deck at the slide size, so a
+   screenshot is the slide itself. */
+function deckSlides() {
+  const tree = parse(readDeck(DECK_FILE) || "");
+  const selector = slideSelector(tree);
+  return { selector, size: (selector && deckSize(tree)) || { width: 1280, height: 720 } };
+}
 const ourWrites = new Map(); // file -> { hash, manual } of what we wrote, to tell our writes from others
 function writeDeck(f, content, manual = false) {
   ourWrites.set(f, { hash: hash(content), manual });
@@ -290,9 +295,10 @@ function chrome(args, done) {
   return new Promise((resolve, reject) => {
     // a profile per run: concurrent runs must not share one
     const profile = path.join(STATE_DIR, "chrome", `p${process.pid}-${++chromeSeq}`);
+    const { size } = deckSlides();
     const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
       "--no-default-browser-check", "--disable-extensions", "--mute-audio", `--user-data-dir=${profile}`,
-      `--window-size=${SLIDE_SIZE.width},${SLIDE_SIZE.height}`, "--force-device-scale-factor=1", "--virtual-time-budget=5000",
+      `--window-size=${size.width},${size.height}`, "--force-device-scale-factor=1", "--virtual-time-budget=5000",
       ...args.map((a) => a.startsWith(ORIGIN + "/") ? chromeStart(profile, a) : a)]);
     let out = "", err = "", finished = false;
     const finish = (fn, v) => {
@@ -477,12 +483,16 @@ const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md
     `${DECK_FILE}. Other .html files in this folder are other decks: do not edit them.\n` : "") +
   (ASSET_ROOTS.length ? `\n\n## Files outside the deck folder\nThe deck may use files in ${ASSET_ROOTS.join(", ")}: refer to ` +
     `them with paths relative to ${DECK_FILE} (such as ../shared/style.css). You can read them; do not edit them, ` +
-    `other decks may use them too.\n` : "") +
-  (DECK_SELECTOR ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
-    `CSS selector \`${DECK_SELECTOR}\` (<meta name="pindeck:slides">), and the deck's own script shows them. Where these ` +
+    `other decks may use them too.\n` : "");
+/* For a deck made without reveal.js: what its slides are, from its selector as it is at each session start */
+function slidesInstructions() {
+  const { selector } = deckSlides();
+  return selector ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
+    `CSS selector \`${selector}\` (<meta name="pindeck:slides">), and the deck's own script shows them. Where these ` +
     `instructions say <section> or reveal.js, read an element matching that selector, and that script. A new slide is ` +
     `a new such element next to the others; keep the pindeck meta tags. Hidden slides (data-visibility="hidden") are ` +
-    `left out of PinDeck's PDF exports; whether presenting skips them depends on the deck's script.\n` : "");
+    `left out of PinDeck's PDF exports; whether presenting skips them depends on the deck's script.\n` : "";
+}
 /* What Claude may never change, whatever the edit rules allow: the locked brand files, vendored libraries,
    git's own files, and other decks in this folder (a named deck shares its folder with them). Deny rules
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
@@ -509,7 +519,7 @@ const session = new ClaudeSession({
   cwd: DECK_DIR,
   env: () => ({ DECK_EDITOR_URL: ORIGIN, DECK_EDITOR_TOKEN: TOKEN }),
   args: () => [
-    "--append-system-prompt", systemPrompt + deckInstructions(),
+    "--append-system-prompt", systemPrompt + slidesInstructions() + deckInstructions(),
     "--setting-sources", "", "--strict-mcp-config",   // no settings files, no MCP servers or connectors
     "--permission-mode", "default",
     // any file in the deck folder (Edit rules cover Write too; Write is named as well, to be explicit)
@@ -1162,7 +1172,8 @@ const server = http.createServer(async (req, res) => {
         if (mode === "shot" || mode === "dump" || mode === "pdf") s = s.replace(/\bpreload="(auto|metadata)"/g, 'preload="none"');
         if (mode === "pdf") {
           s = s.replace(/<\/head>/i, PDF_HEAD_TAG).replace(/<\/body>/i, PDF_PAGE_TAG);
-          return DECK_SELECTOR ? s.replace(/<\/body>/i, BRIDGE_TAG) : s;   // reveal.js lays out its own print view
+          // a deck that names its slides (in the file as it is now) is laid out by the bridge; reveal.js lays out its own
+          return slideSelector(parse(s)) ? s.replace(/<\/body>/i, BRIDGE_TAG) : s;
         }
         return s.replace(/<\/body>/i, BRIDGE_TAG);
       });

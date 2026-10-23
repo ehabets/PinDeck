@@ -95,12 +95,16 @@ with a reveal.js deck, with these differences:
   skips them is up to the deck's own script.
 * Speaker notes are an `<aside class="notes">` in the slide, as in reveal.js. PinDeck hides them in the
   editor; the deck's CSS should hide them too (`aside.notes { display: none }`).
-* **Present** opens the deck at `#<slide id>`, or `#<number>` for a slide without an id.
+* **Present** opens the deck at `#<slide id>`, or `#<number>` (counting from 1) for a slide without an id.
+  Present may open on the first slide if the deck does not go to slides by their address.
 * **＋ New slide** models a new slide on the deck's own (see [Making your own template](#making-your-own-template)):
   a content slide gets placeholder bullets in a `.slide-body`; without one it has only its title.
 
-Without `pindeck:size`, PinDeck uses the size of the first slide as the deck lays it out. A selector that
-finds no slides, or one PinDeck cannot read, is reported before anything changes.
+Both tags are needed: PinDeck opens the slides at the given size for screenshots and PDF pages. A missing
+size, or a selector that finds no slides or that PinDeck cannot read, is reported before anything changes.
+While PinDeck runs, it reads the tags again for every screenshot, PDF and Claude session; the editor reads
+them when the slide reloads. A Claude session already running keeps the slide selector it started with;
+**New chat** starts one with the new selector.
 
 ## Making your own template
 
