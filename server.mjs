@@ -297,6 +297,15 @@ const CHROME = CAPS.chromePath;   // null when Chrome features are unavailable (
 /* Headless Chrome on macOS often lingers long after it has written its output, so we
    watch the output and stop Chrome as soon as `done(stdout, stderr)` says we have it. */
 let chromeSeq = 0;
+/* The page gets the window's size too. Chrome lays it out about 87 px shorter than the window (room for
+   a toolbar it does not draw) and grows it only for the screenshot itself, too late for some versions
+   to lay the slide out again, so shot and dump lay the deck out for this size (see bridge.js). */
+function sized(url, size) {
+  const u = new URL(url);
+  u.searchParams.set("width", size.width);
+  u.searchParams.set("height", size.height);
+  return u.href;
+}
 function chrome(args, done) {
   if (!CHROME) return Promise.reject(new Error(`Screenshots are not available: ${CAPS.screenshot.reason}.`));
   return new Promise((resolve, reject) => {
@@ -306,7 +315,7 @@ function chrome(args, done) {
     const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
       "--no-default-browser-check", "--disable-extensions", "--mute-audio", `--user-data-dir=${profile}`,
       `--window-size=${size.width},${size.height}`, "--force-device-scale-factor=1", "--virtual-time-budget=5000",
-      ...args.map((a) => a.startsWith(ORIGIN + "/") ? chromeStart(profile, a) : a)]);
+      ...args.map((a) => a.startsWith(ORIGIN + "/") ? chromeStart(profile, sized(a, size)) : a)]);
     let out = "", err = "", finished = false;
     const finish = (fn, v) => {
       if (finished) return;
