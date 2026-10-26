@@ -202,6 +202,10 @@ body.resizing-notes .stage iframe { pointer-events: none; }   /* keep the drag w
   border-radius: 12px; padding: 1px 4px 1px 2px; font-size: 12px; margin: 0 4px 4px 0; cursor: pointer; }
 .chip .n { width: 18px; height: 18px; border-radius: 50%; background: var(--orange); color: #fff; font-weight: 700;
   font-size: 11px; line-height: 18px; text-align: center; }
+.shot-chip { font: inherit; color: inherit; }
+.shot-chip img { height: 18px; aspect-ratio: 16 / 9; border-radius: 3px; object-fit: cover; background: var(--line); }
+.shot-chip.gone { color: var(--muted); cursor: default; padding: 1px 6px; }
+.msg.tool .shot-chip { margin: 0; vertical-align: middle; }
 .chip .x { border: 0; background: none; padding: 0 2px; color: var(--muted); font-size: 14px; line-height: 1; }
 .chip .x:hover { color: var(--danger); }
 .chip .lock { color: var(--muted); }
@@ -270,6 +274,7 @@ body.resizing-notes .stage iframe { pointer-events: none; }   /* keep the drag w
 .diff-dialog::backdrop { background: rgba(20,22,25,.35); }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
   border-bottom: 1px solid var(--line); font-weight: 600; }
+.shot-dialog img { display: block; max-width: 100%; max-height: calc(86vh - 50px); margin: 0 auto; }
 .diff { margin: 0; padding: 10px 0; overflow: auto; max-height: calc(86vh - 50px); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .diff span { display: block; padding: 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .diff .a { background: #e9f6ee; }

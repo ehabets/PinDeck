@@ -571,17 +571,21 @@ function md(s) {
   }).join("");
   return out.replace(/<p>\u0000(\d+)\u0000<\/p>|\u0000(\d+)\u0000/g, (_, a, b) => `<pre>${blocks[a ?? b]}</pre>`);
 }
+/* A screenshot in the chat: a small picture that opens large. Only the newest ones are kept on disk;
+   an older one says so (see the error listener below). */
+const shotChip = (file, label = "") => `<button type="button" class="chip shot-chip" data-shot="${esc(file)}" title="Open the screenshot">` +
+  `<img src="/shots/${encodeURIComponent(file)}" alt="" loading="lazy">${label ? ` ${esc(label)}` : ""}</button>`;
 function entryHtml(e) {
   switch (e.kind) {
     case "user":
       return `${esc(e.text)}${e.pins?.length || e.screenshot || e.selection || e.attachments?.length ? `<div class="chips">${e.selection ?
         `<span class="chip sel" title="${esc(e.selection.eid)}"><span class="n">▢</span> S${e.selection.slide} · ${esc(e.selection.label)}</span>` : ""}${(e.pins || []).map((p) =>
         `<span class="chip" title="${esc(p.eid)}"><span class="n">${p.n}</span> S${p.slide} · ${esc(p.label || p.eid)}</span>`).join("")}${
-        e.screenshot ? '<span class="chip">📷 screenshot</span>' : ""}${(e.attachments || []).map((a) =>
+        e.screenshot?.file ? shotChip(e.screenshot.file, `screenshot S${e.screenshot.slide}`) : e.screenshot ? '<span class="chip">📷 screenshot</span>' : ""}${(e.attachments || []).map((a) =>
         `<span class="chip att-chip" title="${esc(a.path)}">${a.kind === "image" ? `<img src="/deck/${esc(a.path)}" alt="">` : a.kind === "pdf" ? "📄" : "🔊"} ${esc(a.path.split("/").pop())}</span>`).join("")}</div>` : ""}`;
     case "assistant": return md(e.text);
     case "tool":
-      return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
+      return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.shot ? " " + shotChip(e.shot) : ""}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
     case "edit": {
       const t = state.turns.get(e.turnId);
       return `<span class="files ${t?.undone ? "undone" : ""}">✎ ${esc(e.label)}</span>
@@ -629,7 +633,23 @@ function clearChat() {
   $("chat-empty").hidden = false;
 }
 
+// a picture that is no longer kept: the chip says so and opens nothing (errors do not bubble: capture)
+chatEl.addEventListener("error", (e) => {
+  const chip = e.target.closest?.("[data-shot]");
+  if (!chip || e.target.tagName !== "IMG") return;
+  chip.removeAttribute("data-shot");
+  chip.classList.add("gone");
+  chip.title = "Only the newest screenshots are kept";
+  chip.textContent = "📷 no longer kept";
+}, true);
 chatEl.addEventListener("click", async (e) => {
+  const s = e.target.closest("[data-shot]");
+  if (s) {
+    $("shot-img").src = `/shots/${encodeURIComponent(s.dataset.shot)}`;
+    $("shot-title").textContent = s.dataset.shot;
+    $("shot-dialog").showModal();
+    return;
+  }
   const d = e.target.closest("[data-diff]");
   if (d) {
     const res = await api(`turn/${d.dataset.diff}/diff`);
@@ -651,6 +671,9 @@ chatEl.addEventListener("click", async (e) => {
   }
 });
 $("diff-close").onclick = () => $("diff-dialog").close();
+$("shot-close").onclick = () => $("shot-dialog").close();
+// Esc closes it (the browser does that for a modal dialog), and so does a click beside the picture
+$("shot-dialog").addEventListener("click", (e) => { if (e.target === $("shot-dialog")) $("shot-dialog").close(); });
 
 function setBusy(busy) {
   state.busy = busy;

@@ -8,6 +8,7 @@
    FAKE_AGENT_MODE  "ok" (default): answers each message, appending a comment to theme.css when the
                     message contains "edit theme", and doing "fake-op write|append|delete <path>" for each
                     such phrase (a path relative to the deck; write and append add a line naming the turn);
+                    claude also reads a screenshot named in the message, as Claude does when told to (Read it);
                     "auth-fail": claude is not logged in (auth status fails, the CLI prints a login error and exits 1);
                     "stubborn": ignores end of input and SIGTERM (only SIGKILL stops it);
                     "garbage": writes malformed and partial lines before each answer
@@ -70,6 +71,8 @@ function claude() {
     if (mode === "garbage") process.stdout.write("not json\n{\"type\":\"assist");   // a partial line, completed below
     if (mode === "garbage") process.stdout.write("\n");
     act(text);
+    const shot = /: (\/.+?\.png) \(Read it\)/.exec(text)?.[1];
+    if (shot) out({ type: "assistant", session_id: session, message: { content: [{ type: "tool_use", id: "read-1", name: "Read", input: { file_path: shot } }] } });
     out({ type: "assistant", session_id: session, message: { content: [{ type: "text", text: "Done (fake)." }] } });
     out({ type: "result", subtype: "success", is_error: false, session_id: session, total_cost_usd: 0, duration_ms: 1 });
   }).on("close", () => {

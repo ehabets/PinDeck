@@ -627,6 +627,49 @@ test("Symlinks: served only when they lead into the deck or an asset root", { sk
   assert.equal((await fetch(`${s2.url}/deck/`, { headers: { "x-editor-token": s2.token }, redirect: "manual" })).status, 200, "no redirect: the root does not contain the deck");
 });
 
+/* A stand-in for Chrome that writes a small PNG where --screenshot= says, and reports it as Chrome does */
+function fakeChrome(fx) {
+  const f = path.join(fx.root, "fake-chrome");
+  fs.writeFileSync(f, `#!/bin/sh\nfor a; do case "$a" in --screenshot=*) out="\${a#--screenshot=}";; esac; done\n` +
+    `printf '\\211PNG\\r\\n\\032\\n' > "$out"\necho "8 bytes written to file $out" >&2\n`, { mode: 0o755 });
+  return f;
+}
+
+test("Screenshots for the chat: only PNGs directly in the screenshots folder, only when logged in", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const decks = path.join(fx.home, "decks"), shots = path.join(decks, fs.readdirSync(decks)[0], "shots");
+  fs.writeFileSync(path.join(shots, "s1-1.png"), "png");
+  fs.writeFileSync(path.join(shots, "notes.txt"), "text");
+  fs.mkdirSync(path.join(shots, "sub"));
+  fs.writeFileSync(path.join(shots, "sub", "s2-1.png"), "png");
+  fs.writeFileSync(path.join(fx.root, "outside.png"), "outside");
+  fs.symlinkSync(path.join(fx.root, "outside.png"), path.join(shots, "link-1.png"));
+  const get = (p, headers = { "x-editor-token": s.token }) => fetch(`${s.url}/shots/${p}`, { headers });
+  const ok = await get("s1-1.png");
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("content-type"), "image/png");
+  assert.equal(await ok.text(), "png");
+  assert.equal((await get("s1-1.png", { cookie: `pindeck-${s.port}=${s.token}` })).status, 200, "the editor's login cookie");
+  assert.equal((await get("s1-1.png", {})).status, 403, "not logged in");
+  assert.equal((await get("gone-1.png")).status, 404, "no longer kept");
+  for (const p of ["notes.txt", "sub%2Fs2-1.png", "sub/s2-1.png", "..%2Fserver.json", "..%2F..%2Foutside.png", ".png", "link-1.png"])
+    assert.equal((await get(p)).status, 403, p);
+});
+
+test("A message's screenshot and Claude's Read of it name the picture; the editor can open it", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx, { env: { CHROME_BIN: fakeChrome(fx) } });
+  const eid = firstSlideEid(fx.deck);
+  assert.equal((await s.api("message", { text: "look", screenshot: true, current: { index: 0, eid } })).status, 200);
+  const user = await waitFor(() => chatOf(fx).find((e) => e.kind === "user"), "the message");
+  assert.match(user.screenshot.file, /^[\w-]+-\d+\.png$/);
+  assert.equal(user.screenshot.slide, 1);
+  const read = await waitFor(() => chatOf(fx).find((e) => e.kind === "tool" && e.name === "Read"), "Claude's Read");
+  assert.equal(read.shot, user.screenshot.file);
+  assert.equal((await fetch(`${s.url}/shots/${user.screenshot.file}`, { headers: { "x-editor-token": s.token } })).status, 200);
+});
+
 test("Asset roots from config.json; a missing one stops the start before anything is written", async (t) => {
   const fx = fixture(t);
   const r = await failedStart(t, fx, { args: ["--port", "0", "--asset-root", path.join(fx.root, "nope")] });
