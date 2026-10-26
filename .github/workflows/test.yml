@@ -28,7 +28,7 @@ jobs:
       - name: Syntax check
         run: for f in server.mjs cli.mjs lib/*.mjs public/*.js; do node --check "$f"; done
       # apt usually takes under a minute here, but a stuck mirror can hang it silently until the job is
-      # cancelled. Each attempt gets 150 seconds, then it is killed and tried again; after 3 attempts the step
+      # cancelled. Each attempt gets 150 seconds, then it is killed and tried again on Ubuntu's own archive; after 3 attempts the step
       # fails rather than going on without the tools, since the tests would then skip the PDF, PowerPoint and
       # audio checks and still pass.
       - name: Linux tools for PDF and PowerPoint pictures and audio (Poppler, LibreOffice, ffmpeg)
@@ -37,12 +37,19 @@ jobs:
         run: |
           apt="apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
           for attempt in 1 2 3; do
-            echo "apt attempt $attempt"
+            echo "::group::apt attempt $attempt"
             sudo dpkg --configure -a
-            if sudo timeout -k 10 150 sh -c "$apt update -qq && $apt install -y -qq --no-install-recommends \
+            if sudo timeout -k 10 150 sh -c "$apt update && $apt install -y -q --no-install-recommends \
                  poppler-utils ffmpeg libreoffice-impress"; then
+              echo "::endgroup::"
               exit 0
             fi
+            echo "::endgroup::"
+            echo "::warning::apt attempt $attempt failed or hung; apt and dpkg processes still running:"
+            ps -eo pid,etime,args | grep -E '[a]pt|[d]pkg' || true
+            # The runner's Azure mirror is the usual suspect; later attempts use Ubuntu's own archive.
+            sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' \
+              /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
             sleep 10
           done
           echo "::error::apt-get failed or hung 3 times; Poppler, LibreOffice and ffmpeg are not installed"
