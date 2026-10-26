@@ -862,6 +862,10 @@
         if (MODE === "main") Reveal.configure({ ...base });
         else Reveal.configure({ ...base, margin: 0, keyboard: false });
       },
+      viewport(width, height) {   // lay the deck out for this size whatever the window's
+        Object.assign(Reveal.getRevealElement().style, { width: width + "px", height: height + "px" });
+        Reveal.layout();
+      },
       ready: (fn) => (Reveal.isReady() ? fn() : Reveal.on("ready", fn)),
       keys() {},   // reveal.js's own keyboard handling stays
     };
@@ -875,7 +879,7 @@
   function selectorDeck() {
     const root = document.documentElement;
     const found = () => { const all = [...document.querySelectorAll(SLIDE_SEL)]; return all.filter((s) => !all.some((o) => o !== s && s.contains(o))); };
-    let list = [], cur = 0, scale = 1, sz = null;
+    let list = [], cur = 0, scale = 1, sz = null, view = null;
     const listeners = { slide: [], resize: [] };
     const emit = (ev) => listeners[ev].forEach((fn) => fn());
     function mark() {   // the slides, and the elements between them and <body>
@@ -901,10 +905,11 @@
     function addStyle(text) { const st = document.createElement("style"); st.textContent = text; document.head.appendChild(st); }
     function fit() {
       const { width, height } = size(), m = MODE === "main" ? 0.04 : 0;   // the margin reveal.js leaves in the editor
-      scale = Math.min(innerWidth * (1 - m) / width, innerHeight * (1 - m) / height) || 1;
+      const vw = view?.width ?? innerWidth, vh = view?.height ?? innerHeight;
+      scale = Math.min(vw * (1 - m) / width, vh * (1 - m) / height) || 1;
       root.style.setProperty("--pindeck-s", String(scale));
-      root.style.setProperty("--pindeck-x", `${(innerWidth - width * scale) / 2}px`);
-      root.style.setProperty("--pindeck-y", `${(innerHeight - height * scale) / 2}px`);
+      root.style.setProperty("--pindeck-x", `${(vw - width * scale) / 2}px`);
+      root.style.setProperty("--pindeck-y", `${(vh - height * scale) / 2}px`);
     }
     // a slide the deck's own CSS hides with display: none is shown as a block
     function display(s) { s.classList.remove("__pindeck_block"); if (getComputedStyle(s).display === "none") s.classList.add("__pindeck_block"); }
@@ -955,6 +960,7 @@
         new MutationObserver((recs) => { if (recs.some((r) => r.target === list[cur])) { list[cur].removeAttribute("inert"); list[cur].removeAttribute("hidden"); display(list[cur]); } })
           .observe(document.body, { subtree: true, attributes: true, attributeFilter: ["inert", "hidden", "style"] });
       },
+      viewport(width, height) { view = { width, height }; fit(); },   // lay the slide out for this size whatever the window's
       ready: (fn) => (document.readyState === "complete" ? fn() : addEventListener("load", () => fn(), { once: true })),
       keys() {   // after the editor's own key handler: slide keys change the slide here, and the deck's script gets none
         const field = (t) => t.closest?.("input, textarea, select, [contenteditable]");
@@ -1011,6 +1017,10 @@
     await document.fonts.ready;
 
     if (MODE === "shot" || MODE === "dump") {
+      // the size of headless Chrome's window, which the page itself gets only once the screenshot is
+      // taken: lay the deck out for it now rather than letterboxed into the shorter viewport
+      const vw = +params.get("width"), vh = +params.get("height");
+      if (vw > 0 && vh > 0) { deck.viewport(vw, vh); setUnit(); }
       const sec = byEid(params.get("slide") || "") || slides()[0];
       goto(indexOf(sec));
       await nextFrame();

@@ -13,6 +13,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { cliCommand, findExecutable } from "../lib/capabilities.mjs";
@@ -127,6 +128,38 @@ const chatOf = (fx) => {
 function externalEdit(deck, file, fn) {
   const f = path.join(deck, file);
   fs.writeFileSync(f, fn(fs.readFileSync(f, "utf8")));
+}
+/* An 8-bit RGB or RGBA PNG (as Chrome writes them): its size and at(x, y) = [r, g, b]. */
+function pngPixels(png) {
+  const width = png.readUInt32BE(16), height = png.readUInt32BE(20), type = png[25];
+  assert.ok(png[24] === 8 && (type === 2 || type === 6), "an 8-bit RGB or RGBA PNG");
+  const idat = [];
+  for (let o = 8; o < png.length; o += 12 + png.readUInt32BE(o)) {
+    if (png.toString("latin1", o + 4, o + 8) === "IDAT") idat.push(png.subarray(o + 8, o + 8 + png.readUInt32BE(o)));
+  }
+  const data = zlib.inflateSync(Buffer.concat(idat)), bpp = type === 6 ? 4 : 3, stride = width * bpp;
+  const px = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y++) {
+    const f = data[y * (stride + 1)], row = data.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? px[y * stride + i - bpp] : 0, b = y ? px[(y - 1) * stride + i] : 0;
+      const c = i >= bpp && y ? px[(y - 1) * stride + i - bpp] : 0;
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pred = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][f];
+      px[y * stride + i] = (row[i] + pred) & 255;
+    }
+  }
+  return { width, height, at: (x, y) => [...px.subarray(y * stride + x * bpp, y * stride + x * bpp + 3)] };
+}
+/* A screenshot of the slide that shows no letterbox colour at its corners and edges. */
+async function assertFillsShot(s, slide, size, letterbox) {
+  const shot = await s.api(`shot?slide=${slide}`);
+  assert.equal(shot.status, 200, String(shot.data));
+  const { width, height, at } = pngPixels(fs.readFileSync(String(shot.data).trim()));
+  assert.deepEqual([width, height], size);
+  for (const [x, y] of [[2, 2], [width - 3, 2], [2, height - 3], [width - 3, height - 3], [width >> 1, 2], [2, height >> 1]]) {
+    assert.notDeepEqual(at(x, y), letterbox, `letterbox at (${x}, ${y})`);
+  }
 }
 function raw(port, { method = "GET", p = "/", headers = {} } = {}) {
   return new Promise((resolve, reject) => {
@@ -838,6 +871,16 @@ test("Real Chrome: screenshot, headless layout and PDF export through the login,
     assert.equal(fs.readFileSync(file).subarray(0, 5).toString(), "%PDF-");
     assert.ok(fs.statSync(file).size > 100000, `${kind}: slides, not a login page`);
   }
+
+  // The slide fills the screenshot. Chrome lays the page out ~87 px shorter than its window and grows
+  // it only for the capture; some versions do not lay the slide out again, as the swallowed resize here
+  // does. The slide is green, everything around it magenta.
+  externalEdit(fx.deck, "index.html", (h) => h.replace("</head>",
+    "<style>html, body, .reveal { background: #f0f !important } .reveal .backgrounds { display: none }" +
+    " .reveal .slides { background: #0f0 }</style>" +
+    "<script>addEventListener(\"resize\", (e) => e.stopImmediatePropagation(), true)</script></head>"));
+  await assertFillsShot(s, 3, [1280, 720], [255, 0, 255]);
+
   const args = fs.readFileSync(argsLog, "utf8");
   assert.ok(args.includes("pindeck-start.html"));
   assert.ok(!args.includes(s.token), "no token on Chrome's command line");
@@ -865,6 +908,12 @@ test("Real Chrome, a deck that names its slides: screenshot at the slide size, h
   const bytes = fs.readFileSync(path.join(fx.deck, "export", `${path.basename(fx.deck)}-handout.pdf`));
   assert.equal((bytes.toString("latin1").match(/\/Type\s*\/Page[^s]/g) || []).length, 3, "one page per slide");
   assert.match(bytes.toString("latin1"), /\/MediaBox\s*\[\s*0 0 768 576\s*\]/, "pages of the slide size (1024 x 768 px)");
+
+  // the slide (white) fills the screenshot, the page around it (#444) does not show, also when the
+  // late resize Chrome makes for the capture lays nothing out again (see the reveal.js deck's test)
+  externalEdit(fx.deck, "index.html", (h) => h.replace("</head>",
+    "<script>addEventListener(\"resize\", (e) => e.stopImmediatePropagation(), true)</script></head>"));
+  await assertFillsShot(s, 2, [1024, 768], [68, 68, 68]);
 });
 
 /* ---- Conflicts: stale edits, Undo and Redo ------------------------------------------------------ */
