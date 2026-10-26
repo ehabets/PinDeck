@@ -27,11 +27,26 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Syntax check
         run: for f in server.mjs cli.mjs lib/*.mjs public/*.js; do node --check "$f"; done
+      # apt usually takes under a minute here, but a stuck mirror can hang it silently until the job is
+      # cancelled. Each attempt gets 150 seconds, then it is killed and tried again; after 3 attempts the step
+      # fails rather than going on without the tools, since the tests would then skip the PDF, PowerPoint and
+      # audio checks and still pass.
       - name: Linux tools for PDF and PowerPoint pictures and audio (Poppler, LibreOffice, ffmpeg)
         if: runner.os == 'Linux'
+        timeout-minutes: 9
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends poppler-utils ffmpeg libreoffice-impress
+          apt="apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          for attempt in 1 2 3; do
+            echo "apt attempt $attempt"
+            sudo dpkg --configure -a
+            if sudo timeout -k 10 150 sh -c "$apt update -qq && $apt install -y -qq --no-install-recommends \
+                 poppler-utils ffmpeg libreoffice-impress"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::apt-get failed or hung 3 times; Poppler, LibreOffice and ffmpeg are not installed"
+          exit 1
       - name: Find Chrome for the real-Chrome test
         run: |
           for c in "$(command -v google-chrome || true)" "$(command -v chromium || true)" \
