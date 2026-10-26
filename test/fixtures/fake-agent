@@ -99,6 +99,7 @@ function codex() {
       const nextLock = logFile && `${logFile}.${thread}.lock`;
       if (nextLock && fs.existsSync(nextLock)) return fail("Thread already has an active writer");
       if (nextLock) { lock = nextLock; fs.writeFileSync(lock, String(process.pid)); }
+      log({ event: "thread", instructions: p.developerInstructions || "" });   // what Codex is told
       reply({ thread: { id: thread }, model: p.model });
     }
     if (m.method === "turn/start") {

@@ -146,10 +146,10 @@ with a reveal.js deck, with these differences:
 
 Both tags are needed: PinDeck opens the slides at the given size for screenshots and PDF pages. A missing
 size, or a selector that finds no slides or that PinDeck cannot read, is reported before anything changes.
-While PinDeck runs, it reads the tags again for every screenshot, PDF and Claude session; the editor reads
-them when the slide reloads. If a tag stops working meanwhile, the editor shows the same message and Claude
-is told. A Claude session already running keeps the slide selector it started with; **New chat** starts one
-with the new selector.
+While PinDeck runs, it reads the tags again for every screenshot, PDF and assistant session; the editor
+reads them when the slide reloads. If a tag stops working meanwhile, the editor shows the same message and
+the assistant is told. A session already running keeps the slide selector it started with; **New chat**
+starts one with the new selector.
 
 ## Making your own template
 

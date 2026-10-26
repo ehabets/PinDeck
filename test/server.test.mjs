@@ -492,9 +492,17 @@ test("A deck that names its slides: ids, slide actions, Claude's instructions an
   assert.match(await page("main"), /<script src="\/editor\/bridge\.js"><\/script>/);
   assert.match(await page("pdf"), /<script src="\/editor\/bridge\.js"><\/script>/);
   // Claude is told what the slides are
-  const start = await waitFor(() => fakeLog(fx).find((e) => e.event === "start"), "Claude to start");
+  const start = await waitFor(() => claudeStart(fx), "Claude to start");
   const prompt = start.argv[start.argv.indexOf("--append-system-prompt") + 1];
   assert.match(prompt, /## Slides of this deck\nThis deck is not made with reveal\.js: its slides are the elements matching the CSS selector `main\.deck > section\.slide`/);
+});
+
+test("A deck that names its slides: Codex is told what the slides are too", async (t) => {
+  const fx = selectorFixture(t);
+  const s = await startServer(t, fx, { args: ["--port", "0", "--provider", "codex"] });
+  assert.equal((await s.api("message", { text: "hello" })).status, 200);
+  const thread = await waitFor(() => fakeLog(fx).find((e) => e.event === "thread"), "Codex to start a thread");
+  assert.match(thread.instructions, /## Slides of this deck\nThis deck is not made with reveal\.js: its slides are the elements matching the CSS selector `main\.deck > section\.slide`/);
 });
 
 test("A reveal.js deck's print view has no editor bridge: reveal.js lays out its own pages", async (t) => {
@@ -502,7 +510,7 @@ test("A reveal.js deck's print view has no editor bridge: reveal.js lays out its
   const s = await startServer(t, fx);
   const html = await (await fetch(`${s.url}/deck/?editor=pdf&print-pdf`, { headers: { "x-editor-token": s.token } })).text();
   assert.doesNotMatch(html, /editor\/bridge\.js/);
-  const start = await waitFor(() => fakeLog(fx).find((e) => e.event === "start"), "Claude to start");
+  const start = await waitFor(() => claudeStart(fx), "Claude to start");
   assert.doesNotMatch(start.argv[start.argv.indexOf("--append-system-prompt") + 1], /## Slides of this deck/);
 });
 
@@ -510,7 +518,7 @@ test("Slide meta tags added while PinDeck runs count from the next print view an
   const fx = fixture(t);
   const s = await startServer(t, fx);
   const printView = async () => (await fetch(`${s.url}/deck/?editor=pdf`, { headers: { "x-editor-token": s.token } })).text();
-  const starts = () => fakeLog(fx).filter((e) => e.event === "start");
+  const starts = () => fakeLog(fx).filter((e) => e.event === "start" && e.argv[0] !== "app-server");
   const promptOf = (e) => e.argv[e.argv.indexOf("--append-system-prompt") + 1];
   await waitFor(() => starts().length === 1, "Claude to start");
   externalEdit(fx.deck, "index.html", (h) => h.replace("<head>",
