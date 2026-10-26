@@ -396,8 +396,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Versions
 
-* **2.10.0-beta.1** (2.10 beta): decks with their own file names and shared files, and Claude working
-  on the whole deck.
+* **2.10**: decks with their own file names and shared files, decks made without reveal.js, and Claude
+  working on the whole deck.
   - A deck file by name: `pindeck path/to/talk.html` (a folder still opens its `index.html`). Several
     decks can share a folder, each with its own chat and undo history.
   - Claude may edit and create other files of the deck (scripts, style sheets, notes), never
@@ -408,8 +408,14 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
     screenshots and PDF exports. A symlink that leads out of the deck and its asset roots is refused.
   - Shared instructions: the deck's `CLAUDE.md` and `AGENTS.md` may import other files with `@path`.
     `CLAUDE.md` files in parent folders are still not loaded, on purpose (see the README).
-  - Decks made with other slide frameworks (Marp, Slidev, impress.js, remark and others) are
-    recognised and refused with their name, before PinDeck changes anything.
+  - Decks made without reveal.js (a script of their own, Shower, deck.js, a hand-written deck): a deck
+    that names its slides with `<meta name="pindeck:slides">` (a CSS selector) and their size with
+    `<meta name="pindeck:size">` is edited like a reveal.js deck, with screenshots at the slide size and
+    one PDF page per slide (contributed by Zeyu Xu). Decks made with other slide frameworks (Marp,
+    Slidev, impress.js, remark and others) without these tags are recognised and refused with their
+    name, before PinDeck changes anything; the message says how to add the tags.
+  - Screenshots fill the picture: headless Chrome lays the page out shorter than its window, which
+    left the slide letterboxed in some Chrome versions (reported by Zeyu Xu).
   - Linux: pictures of PDF pages with Poppler, the PowerPoint import with slide pictures from
     LibreOffice, and waveforms of non-WAV audio with ffmpeg, each when installed.
 
