@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS, and Linux as a beta · Version 3 beta preview** (`3.0.0-beta.2`). On Linux, PinDeck runs as a
+> **macOS, and Linux as a beta · Version 3 beta preview** (`3.0.0-beta.3`). On Linux, PinDeck runs as a
 > headless server that you use from your Mac's browser through an SSH tunnel (see
 > [Running on a Linux server](#running-on-a-linux-server-beta)). Windows is not supported. The beta is on
 > npm’s `beta` channel and the [`v3-beta`](https://github.com/ehabets/PinDeck/tree/v3-beta) branch; stable
@@ -42,7 +42,7 @@ Install the beta from npm:
 ```bash
 npx pindeck@beta /path/to/deck
 # Or select this exact beta:
-npx pindeck@3.0.0-beta.2 /path/to/deck
+npx pindeck@3.0.0-beta.3 /path/to/deck
 ```
 
 Or run it from the `v3-beta` branch, which includes the example deck:
@@ -498,6 +498,12 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Versions
 
+* **3.0.0-beta.3**: everything from 2.10.0, for both assistants.
+  - Decks made without reveal.js: a deck that names its slides with `<meta name="pindeck:slides">`
+    and their size with `<meta name="pindeck:size">` is edited like a reveal.js deck (contributed by
+    Zeyu Xu). Claude and Codex are both told what the deck's slides are.
+  - Screenshots fill the picture instead of being letterboxed into a shorter page.
+
 * **3.0.0-beta.2**: everything from 2.9 and 2.10, with Codex brought up to it.
   - Security: the fix from 2.9. The editor page no longer contains the token, and the deck needs it
     too, so other users of the same machine cannot read either. PinDeck prints a one-time login link at
@@ -517,8 +523,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   switching with optional handover, curated model lists, a separate effort selector with per-model
   preferences, restricted Codex tools, and separate v3 runtime state. On npm as `pindeck@beta`.
 
-* **2.10.0-beta.1** (2.10 beta): decks with their own file names and shared files, and Claude working
-  on the whole deck.
+* **2.10**: decks with their own file names and shared files, decks made without reveal.js, and Claude
+  working on the whole deck.
   - A deck file by name: `pindeck path/to/talk.html` (a folder still opens its `index.html`). Several
     decks can share a folder, each with its own chat and undo history.
   - Claude may edit and create other files of the deck (scripts, style sheets, notes), never
@@ -529,8 +535,14 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
     screenshots and PDF exports. A symlink that leads out of the deck and its asset roots is refused.
   - Shared instructions: the deck's `CLAUDE.md` and `AGENTS.md` may import other files with `@path`.
     `CLAUDE.md` files in parent folders are still not loaded, on purpose (see the README).
-  - Decks made with other slide frameworks (Marp, Slidev, impress.js, remark and others) are
-    recognised and refused with their name, before PinDeck changes anything.
+  - Decks made without reveal.js (a script of their own, Shower, deck.js, a hand-written deck): a deck
+    that names its slides with `<meta name="pindeck:slides">` (a CSS selector) and their size with
+    `<meta name="pindeck:size">` is edited like a reveal.js deck, with screenshots at the slide size and
+    one PDF page per slide (contributed by Zeyu Xu). Decks made with other slide frameworks (Marp,
+    Slidev, impress.js, remark and others) without these tags are recognised and refused with their
+    name, before PinDeck changes anything; the message says how to add the tags.
+  - Screenshots fill the picture: headless Chrome lays the page out shorter than its window, which
+    left the slide letterboxed in some Chrome versions (reported by Zeyu Xu).
   - Linux: pictures of PDF pages with Poppler, the PowerPoint import with slide pictures from
     LibreOffice, and waveforms of non-WAV audio with ffmpeg, each when installed.
 
