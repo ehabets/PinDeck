@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS, and Linux as a beta · Version 3 beta preview** (`3.0.0-beta.3`). On Linux, PinDeck runs as a
+> **macOS, and Linux as a beta · Version 3 beta preview** (`3.1.0-beta.1`). On Linux, PinDeck runs as a
 > headless server that you use from your Mac's browser through an SSH tunnel (see
 > [Running on a Linux server](#running-on-a-linux-server-beta)). Windows is not supported. The beta is on
 > npm’s `beta` channel and the [`v3-beta`](https://github.com/ehabets/PinDeck/tree/v3-beta) branch; stable
@@ -42,7 +42,7 @@ Install the beta from npm:
 ```bash
 npx pindeck@beta /path/to/deck
 # Or select this exact beta:
-npx pindeck@3.0.0-beta.3 /path/to/deck
+npx pindeck@3.1.0-beta.1 /path/to/deck
 ```
 
 Or run it from the `v3-beta` branch, which includes the example deck:
@@ -515,6 +515,17 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server-beta)).
 
 ## Versions
+
+* **3.1.0-beta.1**: several decks on one port, and screenshots you can open from the chat.
+  - A deck menu: click the deck's name above the slide to open another deck from its folder or the
+    asset roots (and one folder down). Each open deck keeps its own chat, assistant session and Undo;
+    listing decks changes no file. `pindeck` now starts a small front that holds the port and the
+    login and runs one deck server per open deck. A deck with no editor open for 30 minutes closes
+    (its Undo history goes, as on a restart) and reopens when chosen again.
+  - A folder without `index.html` opens a page listing its decks instead of failing.
+  - `pindeck login talk.html` prints a link that opens that deck.
+  - Screenshots the assistant took show as a small picture on the chat line; click it to see it large.
+    A screenshot PinDeck no longer keeps says so.
 
 * **3.0.0-beta.3**: everything from 2.10.0, for both assistants.
   - Decks made without reveal.js: a deck that names its slides with `<meta name="pindeck:slides">`
