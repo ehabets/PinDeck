@@ -591,7 +591,9 @@ test("Asset root: the deck is served inside it, so ../ paths work; nothing outsi
   // the editor asks for /deck/ and is sent to the page inside the root, with its query
   const r = await fetch(`${s.url}/deck/?editor=main&x=1`, { headers: auth, redirect: "manual" });
   assert.equal(r.status, 302);
-  assert.equal(r.headers.get("location"), `${page}?editor=main&x=1`);
+  // relative, so it stays under the front's /d/<deck>/
+  assert.equal(r.headers.get("location"), `..${page}?editor=main&x=1`);
+  assert.equal(new URL(r.headers.get("location"), `${s.url}/d/k/deck/`).pathname, `/d/k${page}`);
   const html = await (await fetch(`${s.url}${page}?editor=main`, { headers: auth })).text();
   assert.match(html, /<script src="\/editor\/bridge\.js"><\/script>/);
   // ../shared/extra.css from the deck page

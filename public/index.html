@@ -35,7 +35,10 @@
         <button id="prev" class="icon" title="Previous slide (←)" aria-label="Previous slide">‹</button>
         <span id="slide-pos" class="pos">– / –</span>
         <button id="next" class="icon" title="Next slide (→)" aria-label="Next slide">›</button>
-        <span id="deck-name" class="deck-name"></span>
+        <span class="menu-wrap deck-wrap">
+          <button id="deck-btn" class="deck-btn" aria-haspopup="menu" aria-expanded="false" disabled><span id="deck-name"></span><span class="caret" hidden>▾</span></button>
+          <div id="deck-menu" class="menu left deck-menu" role="menu" hidden></div>
+        </span>
         <span id="server-note" class="server-note" hidden></span>
       </div>
       <div class="group">

@@ -23,9 +23,10 @@
   "bugs": "https://github.com/ehabets/PinDeck/issues",
   "type": "module",
   "bin": {
-    "pindeck": "server.mjs"
+    "pindeck": "front.mjs"
   },
   "files": [
+    "front.mjs",
     "server.mjs",
     "cli.mjs",
     "lib/",
@@ -34,7 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "node server.mjs",
+    "start": "node front.mjs",
     "test": "node --test"
   },
   "os": [

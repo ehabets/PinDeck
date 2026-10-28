@@ -39,19 +39,14 @@ import { isSupportedPlatform, detectCapabilities, publicCapabilities, capability
 import { unsupportedMessage } from "./lib/frameworks.mjs";
 import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
+import { deckTarget, homeDir } from "./lib/deck-target.mjs";
+import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
+import { USAGE } from "./lib/usage.mjs";
 
 /* ---- Config ------------------------------------------------------------------ */
-const USAGE = `Usage: pindeck [deck-folder | deck-file.html] [--port 5180] [--provider claude|codex] [--model <name>] [--asset-root <folder>]...
-       pindeck login [deck-folder | deck-file.html]
-
-Opens a reveal.js deck in PinDeck: a deck file such as talk.html, or a folder (default: the current
-folder), which then opens its index.html. A deck made otherwise names its slides in its <head> with
-<meta name="pindeck:slides" content="<CSS selector>"> and <meta name="pindeck:size" content="1440x1080">.
-login prints a new one-time login link for the PinDeck running for that deck
-(without a deck: for the PinDeck started last).
---asset-root lets the deck use files outside its folder: a folder that contains the deck (paths such as
-../shared/style.css then work), or one that symlinks in the deck may point to. Repeatable; also
-"assetRoots" in ~/.pindeck-v3/config.json.`;
+/* Started by the front (pindeck, front.mjs) for one of the decks it serves: the front logs browsers in,
+   prints the links and owns ~/.pindeck-v3/server.json; this server tells it its address over IPC. */
+const FRONT = !!process.env.PINDECK_FRONT && !!process.send;
 const EDITOR_DIR = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) { console.log(USAGE); process.exit(0); }
@@ -70,21 +65,11 @@ const LOGIN = argv[0] === "login";
 if (LOGIN) argv.shift();
 const PROVIDER = opt("--provider", "");
 const MODEL = opt("--model", "");
-/* The deck: a file (talk.html), or a folder, which means its index.html. A path ending in .html or .htm
-   that is not a folder is a file, so a missing file gets a clear message. */
-const TARGET = path.resolve(argv[0] || process.cwd());
-const isFolder = (() => { try { return fs.statSync(TARGET).isDirectory(); } catch { return false; } })();
-const DECK_DIR = isFolder || !/\.html?$/i.test(TARGET) ? TARGET : path.dirname(TARGET);
-const DECK_FILE = DECK_DIR === TARGET ? "index.html" : path.basename(TARGET);
-const NAMED = DECK_FILE !== "index.html";             // a deck file with its own name; several can share a folder
-const DECK_NAME = NAMED ? DECK_FILE.replace(/\.html?$/i, "") : path.basename(DECK_DIR);   // for exports and titles
+/* The deck: a file (talk.html), or a folder, which means its index.html (see lib/deck-target.mjs) */
+const { dir: DECK_DIR, file: DECK_FILE, named: NAMED, name: DECK_NAME, key: deckKey } = deckTarget(argv[0] || process.cwd());
 const EDITABLE = [DECK_FILE, "theme.css"];         // both backends may edit these
 const LOCKED = ["brand.css"];                      // never, enforced twice
-const HOME_DIR = process.env.PINDECK_HOME || path.join(os.homedir(), ".pindeck-v3");
-/* State per deck file. A folder's index.html keeps the key it always had, so existing chats and undo
-   histories stay; a named file gets its own, so two decks in one folder never share chat or undo. */
-const deckKey = (NAMED ? `${path.basename(DECK_DIR)}-${DECK_NAME}` : path.basename(DECK_DIR)).replace(/[^\w.-]+/g, "_") + "-" +
-  crypto.createHash("sha1").update(NAMED ? path.join(DECK_DIR, DECK_FILE) : DECK_DIR).digest("hex").slice(0, 8);
+const HOME_DIR = homeDir();
 const STATE_DIR = path.join(HOME_DIR, "decks", deckKey);
 const SHOT_DIR = path.join(STATE_DIR, "shots");
 const SHOT_NAME = /^[\w-][\w.-]*\.png$/;   // a file name in SHOT_DIR, as the editor may ask for it
@@ -137,7 +122,9 @@ if (frameworkProblem) {
 }
 /* Runtime files hold the token, the chat and attachments: private to the user. Written only after the
    port is bound (see Start), so a failed start leaves no state behind. */
-const SERVER_FILES = [path.join(STATE_DIR, "server.json"), path.join(HOME_DIR, "server.json")];   // the second: the CLI's fallback
+// the second: the CLI's fallback. Behind the front none: its own server.json leads pindeck login to the front
+// (a deck server's port is no use to a browser behind a tunnel), and the assistant's CLI gets this server's address.
+const SERVER_FILES = FRONT ? [] : [path.join(STATE_DIR, "server.json"), path.join(HOME_DIR, "server.json")];
 function writeServerInfo() {
   for (const d of [HOME_DIR, STATE_DIR, SHOT_DIR]) fs.mkdirSync(d, { recursive: true, mode: 0o700 });
   const info = JSON.stringify({ url: ORIGIN, token: TOKEN, deckDir: DECK_DIR, pid: process.pid }, null, 2);
@@ -401,7 +388,7 @@ function exportPdf(kind, includeHidden = false) {
     try { await printPdf(CHROME, chromeStart(printProfile, `${ORIGIN}${DECK_BASE}__pindeck-print-${id}.html`), out, printProfile); }
     finally { snapshots.delete(id); }
     return { kind: split ? "presentation" : "handout", path: out, rel: path.relative(DECK_DIR, out),
-      url: `/deck/export/${encodeURIComponent(name)}`, bytes: fs.statSync(out).size };
+      url: `deck/export/${encodeURIComponent(name)}`, bytes: fs.statSync(out).size };
   };
   const job = exportQueue.then(run, run);
   exportQueue = job.catch(() => {});
@@ -1164,57 +1151,9 @@ async function refineImport(imp, pdf, plans, eids, first) {
 
 /* ---- HTTP ------------------------------------------------------------------------------------- */
 const BRIDGE_TAG = `<script src="/editor/bridge.js"></script>\n</body>`;
-/* Pages opened as 127.0.0.1 or localhost only, on any port: an SSH tunnel may use another local port.
-   Another site's name pointed at 127.0.0.1 (DNS rebinding) must not read the editor page, its token or the deck. */
-const goodHost = (h) => /^(127\.0\.0\.1|localhost)(:\d{1,5})?$/.test(h);
-
-/* Who may read the editor, the deck and the API. The token never appears in a page or on a command line,
-   where other users of a shared server could read it (ps, curl). A browser logs in once with a one-time
-   code (printed at start, or by `pindeck login`) and then holds the token in an HttpOnly cookie; the CLI
-   and Claude send it in a header. Browsers share cookies across all ports of a host, so the cookie name
-   carries this server's port. */
-const loginCodes = new Map();   // code -> expiry (ms)
-function loginCode(ttl) {
-  const now = Date.now();
-  for (const [c, exp] of loginCodes) if (exp < now) loginCodes.delete(c);
-  const code = crypto.randomBytes(16).toString("hex");
-  loginCodes.set(code, now + ttl);
-  return code;
-}
-const loginUrl = (code, next = "/") => `${ORIGIN}/login?` + new URLSearchParams({ code, ...(next !== "/" ? { next } : {}) });
-const cookieName = () => `pindeck-${PORT}`;
-const sameSecret = (a) => typeof a === "string" && a.length === TOKEN.length &&
-  crypto.timingSafeEqual(Buffer.from(a), Buffer.from(TOKEN));
-function cookie(req, name) {
-  for (const part of String(req.headers.cookie || "").split(";")) {
-    const i = part.indexOf("=");
-    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
-  }
-  return null;
-}
-const authed = (req) => sameSecret(req.headers["x-editor-token"]) || sameSecret(cookie(req, cookieName()));
-const LOGIN_PAGE = `<!doctype html><meta charset="utf-8"><title>PinDeck</title>
-<body style="font:16px system-ui,sans-serif;max-width:36em;margin:4em auto;padding:0 1em">
-<h1>Log in to PinDeck</h1><p>Open the login link that PinDeck printed when it started. Links work once;
-for a new one, run <code>pindeck login</code> in the deck folder (or <code>node server.mjs login</code> in a
-PinDeck checkout).</p>`;
-/* A one-time code: set the cookie, then go on with a same-origin navigation (a redirect from a cross-site
-   start, such as a file:// page or a link in a terminal, would not carry a SameSite=Strict cookie). */
-function login(res, url) {
-  const code = url.searchParams.get("code") || "";
-  const exp = loginCodes.get(code);
-  loginCodes.delete(code);
-  if (!exp || exp < Date.now()) {
-    res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-    return res.end(LOGIN_PAGE.replace("<p>", "<p>This login link has expired or was used already. "));
-  }
-  let next = url.searchParams.get("next") || "/";
-  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) next = "/";
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
-    "set-cookie": `${cookieName()}=${TOKEN}; HttpOnly; SameSite=Strict; Path=/` });
-  const to = JSON.stringify(next).replace(/</g, "\\u003c");
-  res.end(`<!doctype html><meta charset="utf-8"><title>PinDeck</title><script>location.replace(${to})</script>`);
-}
+/* Who may read the editor, the deck and the API: see lib/login.mjs. Behind the front, browsers log in
+   there, and the front sends this server's token in a header. */
+const { loginCode, loginUrl, authed, login } = createLogin({ token: TOKEN, port: () => PORT, origin: () => ORIGIN });
 /* Headless Chrome gets a start page in its own profile folder (0700) instead of a URL with a secret on
    its command line: the page sends it to a one-time login code, which leads on to the target. */
 function chromeStart(profile, target) {
@@ -1288,9 +1227,10 @@ const server = http.createServer(async (req, res) => {
       return res.end(html);
     }
     // /deck/: the deck folder; /deck/ alone is the deck page. With an asset root the page lives under
-    // /files/, so that ../ paths reach the root: /deck/ alone redirects there.
+    // /files/, so that ../ paths reach the root: /deck/ alone redirects there (a relative redirect, which
+    // stays under the front's /d/<deck>/).
     if (req.method === "GET" && p === "/deck/" && SERVE_ROOT) {
-      res.writeHead(302, { location: DECK_PAGE + url.search, "cache-control": "no-store" });
+      res.writeHead(302, { location: ".." + DECK_PAGE + url.search, "cache-control": "no-store" });
       return res.end();
     }
     const deckPath = req.method === "GET" && (p.startsWith("/deck/") ? servable(DECK_DIR, p.slice(6) || DECK_FILE)
@@ -1413,7 +1353,7 @@ const server = http.createServer(async (req, res) => {
       const rel = attachPath(original);
       writeDeckFile(rel, buf);
       state.uploads.add(rel);
-      return json(res, 200, { path: rel, kind, bytes: buf.length, url: `/deck/${rel}` });
+      return json(res, 200, { path: rel, kind, bytes: buf.length, url: `deck/${rel}` });
     }
     if (p === "/api/upload-remove" && req.method === "POST") {
       const b = await body(req);
@@ -1742,12 +1682,18 @@ server.listen(PORT, "127.0.0.1", () => {
     process.exit(1);
   }
   ready = true;
-  console.log(`PinDeck: ${loginUrl(loginCode(3600000))}`);
-  console.log("  (a one-time login link, valid for an hour; for a new one: pindeck login)");
-  console.log(`Deck: ${DECK_DIR}`);
-  console.log(`Server: ${CAPS.label}`);
-  for (const [name, c] of Object.entries(publicCapabilities(CAPS)))
-    if (c && c.available === false) console.log(`  ${name}: off (${c.reason})`);
+  if (FRONT) {
+    // the front prints the login link and the capabilities; it ends this server when it goes, even killed
+    process.send({ ready: { url: ORIGIN, token: TOKEN } });
+    process.on("disconnect", () => { if (!quitting) quit(); });   // a second quit() would exit at once
+  } else {
+    console.log(`PinDeck: ${loginUrl(loginCode(3600000))}`);
+    console.log("  (a one-time login link, valid for an hour; for a new one: pindeck login)");
+    console.log(`Deck: ${DECK_DIR}`);
+    console.log(`Server: ${CAPS.label}`);
+    for (const [name, c] of Object.entries(publicCapabilities(CAPS)))
+      if (c && c.available === false) console.log(`  ${name}: off (${c.reason})`);
+  }
   discoverModels().then(() => {
     if (!settings.model) {
       const models = catalog[settings.provider].models;

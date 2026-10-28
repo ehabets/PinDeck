@@ -1,0 +1,14 @@
+/* The front's own pages: the list of decks (a folder without index.html) and why a deck cannot be opened */
+body { margin: 0; background: #f6f6f4; color: #1d1f22; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.front { max-width: 44em; margin: 3em auto; padding: 0 16px; }
+.front h1 { font-size: 22px; margin: 0 0 .8em; }
+.front h2 { font-size: 12px; font-weight: 600; color: #6b6f76; margin: 1.6em 0 .4em; overflow-wrap: anywhere; }
+.front ul { list-style: none; margin: 0; padding: 0; border: 1px solid #e3e3df; border-radius: 10px; background: #fff; }
+.front li { padding: 9px 14px; border-top: 1px solid #ececea; }
+.front li:first-child { border-top: 0; }
+.front li a { color: #1d1f22; font-weight: 500; text-decoration: none; }
+.front li a:hover { color: #e8710a; }
+.front li small { color: #6b6f76; margin-left: 6px; }
+.front li.off { color: #8a8e94; }
+.front li.off small { display: block; margin: 2px 0 0; font-size: 12px; }
+.front pre { white-space: pre-wrap; background: #fff; border: 1px solid #e3e3df; border-radius: 8px; padding: 10px 12px; font-size: 13px; }

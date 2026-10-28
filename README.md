@@ -50,14 +50,14 @@ Or run it from the `v3-beta` branch, which includes the example deck:
 ```bash
 git clone --branch v3-beta --single-branch https://github.com/ehabets/PinDeck.git PinDeck-v3
 cd PinDeck-v3
-node server.mjs ocean-example
+node front.mjs ocean-example
 ```
 
 Use `npx pindeck@latest /path/to/deck` for the stable release; the beta channel does not replace it.
 Releases, with notes for each beta, are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 Then open the login link PinDeck prints (`PinDeck: http://127.0.0.1:5180/login?code=...`). It works
-once and logs this browser in; for a new one, run `pindeck login` (or `node server.mjs login`).
+once and logs this browser in; for a new one, run `pindeck login` (or `node front.mjs login`).
 
 The deck is a file (`pindeck path/to/talk.html`) or a folder, which opens its `index.html`; without
 one, the current folder. Several decks can share a folder, each with its own chat and undo history;
@@ -67,6 +67,17 @@ first. Options: `--port 5180`, `--provider claude|codex`, `--model <name>` (for 
 model in `~/.pindeck-v3/config.json`), `--asset-root <folder>` (see [Files outside the deck folder](#files-outside-the-deck-folder)),
 `--help`. Runtime files (chat history, screenshots, backups) are kept in `~/.pindeck-v3/` (change with
 `PINDECK_HOME`), not in the deck. `ocean-example/` is a complete example deck to start from.
+
+### Several decks
+
+Click the deck's name above the slide for the other decks: the `.html` files in the deck's folder and in
+the asset roots, and in their folders one level down (`lecture/index.html`). A deck opens in the same
+tab, or with ⌘-click in a new one, on the same port and login, so one SSH tunnel serves them all. Each keeps
+its own chat and undo history while it is open, and the assistant finishes a turn in a deck you leave. A
+file PinDeck cannot open is greyed out with the reason; listing a deck changes nothing, and only opening it
+adds its element ids. Started with a folder that has no `index.html`, PinDeck shows the list of its decks.
+A deck with no editor open for 30 minutes is closed (its undo history goes, as on a restart) and opens
+again when you choose it.
 
 ## Compatibility and requirements
 
@@ -242,7 +253,7 @@ The v3 preview defaults to **`~/.pindeck-v3`**, keeping v2 settings and conversa
 not copy the v2 directory automatically. To run both versions at once, use another port, for example:
 
 ```bash
-node server.mjs /path/to/a/deck-copy --port 5183 --provider codex
+node front.mjs /path/to/a/deck-copy --port 5183 --provider codex
 ```
 
 ## Backend permissions and attachments
@@ -284,7 +295,7 @@ the `claude` or `codex` CLI installed and logged in under your account there, if
 editing by hand still works. Then, in one SSH session on the server:
 
 ```bash
-node server.mjs path/to/deck --port 5180
+node front.mjs path/to/deck --port 5180
 ```
 
 and on your Mac, in another terminal (`myserver` is your usual SSH host):
@@ -297,7 +308,7 @@ Open the login link PinDeck printed on the server in the Mac's browser. The loca
 the server's: with `-L 127.0.0.1:8080:127.0.0.1:5180`, change 5180 in the link to 8080. PinDeck accepts any
 port, as long as the address is `127.0.0.1` or `localhost`. If the tunnel drops, a message you have already sent keeps running on the
 server. Restart the tunnel and the editor reconnects and shows the files as they are then; it never sends a
-message twice. If PinDeck restarts, the editor asks you to log in again: run `node server.mjs login
+message twice. If PinDeck restarts, the editor asks you to log in again: run `node front.mjs login
 path/to/deck` on the server for a new link.
 
 Other users of a shared server cannot open the editor or read the deck through PinDeck: the token that
@@ -411,6 +422,10 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## How it works
 
+* **One port, a server per deck.** `pindeck` starts the front (`front.mjs`): it holds the port, the login
+  and the deck list, and serves each open deck at `/d/<deck>/`. Every deck runs its own deck server
+  (`server.mjs`) on a private port of 127.0.0.1 with a token of its own; the front passes each request on
+  with that token. A deck's server, its assistant and its undo history are those of that deck alone.
 * **Element ids.** On start, the server gives every slide and every visible element a readable
   `data-eid` attribute (`summary`, `summary/callout`, `summary/li-2`). Only the attribute is
   inserted; the rest of the file stays as it was. A backup of the file before the first change is
@@ -462,7 +477,9 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 | File | Purpose |
 |---|---|
-| `server.mjs` | Local server (127.0.0.1 only, random token per run, one-time login links): UI, deck files, events, backend session, undo, CLI endpoints, `login`. |
+| `front.mjs` | What `pindeck` starts (127.0.0.1 only, random token per run, one-time login links): the login, the deck list and one deck server per open deck at `/d/<deck>/`; `login`. |
+| `server.mjs` | The server for one deck: UI, deck files, events, backend session, undo, CLI endpoints. Behind the front, or on its own (`node server.mjs <deck>`). |
+| `lib/login.mjs`, `lib/deck-target.mjs`, `lib/deck-list.mjs` | Login links and cookies, which deck a path names (and its state folder), and the decks the menu lists. |
 | `cli.mjs` | `layout`, `shot`, `slides`, `pdf handout` / `pdf presentation` and `pdf-figure` commands for the backends (and for you), and `git-setup`. |
 | `public/` | The editor page, and `bridge.js`, which is injected into the deck in edit mode (never saved to it). |
 | `lib/pptx.mjs`, `lib/zip.mjs`, `lib/xml.mjs` | Reading `.pptx` files (no dependencies): slides, text, shapes and their positions, notes. |
@@ -491,7 +508,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * Parts of an inline SVG move with the whole SVG; inline text (bold, spans) moves with its block.
 * No indenting or outdenting of bullets with `Tab` yet, and `Backspace` at the start of a bullet does not merge it with the one above; ask the assistant for those.
 * Moves are offsets (`translate`), so the space an element came from stays reserved. Ask the assistant to turn hand edits into proper CSS when a layout should really change.
-* The undo history lives on the server and starts fresh when PinDeck restarts.
+* The undo history lives on the server and starts fresh when PinDeck restarts, or when a deck closes after
+  30 minutes without an open editor.
 * One writer at a time: PinDeck is not made for editing the same deck from two editors or tools at once.
 * Linux (beta): pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server-beta)).

@@ -1,6 +1,11 @@
 /* PinDeck UI: slide list, canvas with pins, chat with the selected assistant. */
 
 const $ = (id) => document.getElementById(id);
+/* The editor's own folder: / when it runs alone, /d/<deck>/ behind the front (pindeck), which serves several
+   decks on one port. Every URL of this deck's server starts here. */
+const BASE = new URL(".", location.href).pathname;
+const FRONT = BASE.startsWith("/d/");
+const SLIDE_KEY = FRONT ? `editor.slide:${BASE}` : "editor.slide";   // decks share the origin, not their slide
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 /* Changes to the deck carry the revision of the files this tab shows (state.rev); the server refuses them
    (409, code "stale") if the files have changed since. A change that went through gives the new revision. */
@@ -9,7 +14,7 @@ const CHANGES = new Set(["edit", "text", "split", "remove", "notes", "slide-hidd
 const api = async (p, body) => {
   const change = body !== undefined && CHANGES.has(p.split("?")[0]);
   if (change && state.rev) body = { ...body, rev: state.rev };
-  const res = await fetch("/api/" + p, {
+  const res = await fetch(BASE + "api/" + p, {
     method: body === undefined ? "GET" : "POST",
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -18,7 +23,7 @@ const api = async (p, body) => {
   return res;
 };
 
-const savedSlide = (() => { try { return +localStorage.getItem("editor.slide") || 0; } catch { return 0; } })();
+const savedSlide = (() => { try { return +localStorage.getItem(SLIDE_KEY) || 0; } catch { return 0; } })();
 const state = {
   status: {}, slides: [], current: savedSlide, pins: [], mode: "select", sel: null, // mode: "select" (move, resize) or "pin"
   busy: false, status: {}, turns: new Map(), // turnId -> { undone }
@@ -31,8 +36,8 @@ let measure = null;     // { iframe, bridge }
 let measureReady = null, measureResolve = null;
 
 // showHiddenSlides: PinDeck shows hidden slides so they can be edited (reveal.js drops them otherwise)
-// /deck/ is the deck file the server was started with (index.html, or a named file such as talk.html)
-function deckSrc(mode, extra = "") { return `/deck/?editor=${mode}&showHiddenSlides=true${extra}`; }
+// deck/ is the deck file the server was started with (index.html, or a named file such as talk.html)
+function deckSrc(mode, extra = "") { return `${BASE}deck/?editor=${mode}&showHiddenSlides=true${extra}`; }
 
 function loadMain() {
   const f = document.createElement("iframe");
@@ -83,7 +88,7 @@ window.__editorHost = {
   },
   slideChanged(index) {
     state.current = index;
-    try { localStorage.setItem("editor.slide", String(index)); } catch {}
+    try { localStorage.setItem(SLIDE_KEY, String(index)); } catch {}
     renderSlides();
     renderToolbar();
     loadNotes();
@@ -297,7 +302,7 @@ async function moveSlideTo(from, to) {   // to: insertion index in the current l
   if (!res.ok) return toast(d.error || "Could not move the slide.");
   if (d.unchanged) return;
   state.current = d.index;   // the reload opens the moved slide
-  try { localStorage.setItem("editor.slide", String(d.index)); } catch {}
+  try { localStorage.setItem(SLIDE_KEY, String(d.index)); } catch {}
   loadMain();
 }
 
@@ -366,7 +371,7 @@ notesBox.addEventListener("keydown", (e) => {
 // closing the tab while typing: send what is there (sendBeacon cannot set headers, hence the token in the URL)
 addEventListener("pagehide", () => {
   if (notesDirty() && !state.busy)
-    navigator.sendBeacon("/api/notes", new Blob([JSON.stringify({ eid: notes.eid, text: notesBox.value, html: notes.html })]));
+    navigator.sendBeacon(BASE + "api/notes", new Blob([JSON.stringify({ eid: notes.eid, text: notesBox.value, html: notes.html })]));
 });
 function setNotesOpen(open) {
   $("notes-panel").classList.toggle("collapsed", !open);
@@ -465,6 +470,31 @@ function wireMenu(btnId, menuId, beforeOpen) {
 const closeMenus = () => setMenu(null, null, false);
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) closeMenus(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); }, true);
+/* The deck menu, behind the front only: the decks in the deck's folder and the asset roots (and one folder
+   down). Each is a link, so a deck opens in place, or in a new tab with ⌘-click; the deck left behind keeps
+   its chat and undo, and the assistant goes on with a turn it has begun. */
+if (FRONT) {
+  $("deck-btn").disabled = false;
+  $("deck-btn").title = "Open another deck";
+  $("deck-btn").querySelector(".caret").hidden = false;
+  wireMenu("deck-btn", "deck-menu", async () => {
+    const menu = $("deck-menu");
+    menu.innerHTML = '<div class="menu-note">Looking for decks…</div>';
+    let decks = [];
+    try { decks = (await (await fetch("/api/decks")).json()).decks; }
+    catch { menu.innerHTML = '<div class="menu-note">The deck list is not available.</div>'; return; }
+    const roots = [...new Set(decks.map((d) => d.root))];
+    menu.innerHTML = roots.map((root) => (roots.length > 1 ? `<div class="group" title="${esc(root)}">${esc(root.split("/").pop())}</div>` : "") +
+      decks.filter((d) => d.root === root).map((d) => {
+        const here = BASE === `/d/${d.key}/`;
+        return d.problem
+          ? `<button class="opt" role="menuitem" disabled title="${esc(d.problem)}"><span class="tick"></span><span><b>${esc(d.rel)}</b><span class="why">${esc(d.problem.replace(/^\S+ /, "").split(". ")[0])}.</span></span></button>`
+          : `<a class="opt" role="menuitem" href="/d/${esc(d.key)}/" ${here ? 'aria-current="page"' : ""}><span class="tick">${here ? "✓" : ""}</span>` +
+            `<b>${esc(d.rel)}</b>${here ? "" : d.open ? '<span class="d">open</span>' : ""}</a>`;
+      }).join("")).join("") +
+      '<div class="menu-note">A deck opens here (⌘-click: in a new tab), with its own chat and undo. The assistant finishes its turn in the deck you leave.</div>';
+  });
+}
 const setExportMenu = (open) => setMenu($("export-btn"), $("export-menu"), open);
 wireMenu("export-btn", "export-menu");
 $("export-menu").addEventListener("click", async (e) => {
@@ -493,7 +523,7 @@ $("export-menu").addEventListener("click", async (e) => {
 });
 
 $("present").onclick = () => {
-  window.open(`/deck/${main?.bridge.presentHash(state.current) || ""}`, "_blank");
+  window.open(`${BASE}deck/${main?.bridge.presentHash(state.current) || ""}`, "_blank");
 };
 
 /* ---- Pins --------------------------------------------------------------------------------------- */
@@ -574,7 +604,7 @@ function md(s) {
 /* A screenshot in the chat: a small picture that opens large. Only the newest ones are kept on disk;
    an older one says so (see the error listener below). */
 const shotChip = (file, label = "") => `<button type="button" class="chip shot-chip" data-shot="${esc(file)}" title="Open the screenshot">` +
-  `<img src="/shots/${encodeURIComponent(file)}" alt="" loading="lazy">${label ? ` ${esc(label)}` : ""}</button>`;
+  `<img src="${BASE}shots/${encodeURIComponent(file)}" alt="" loading="lazy">${label ? ` ${esc(label)}` : ""}</button>`;
 function entryHtml(e) {
   switch (e.kind) {
     case "user":
@@ -582,7 +612,7 @@ function entryHtml(e) {
         `<span class="chip sel" title="${esc(e.selection.eid)}"><span class="n">▢</span> S${e.selection.slide} · ${esc(e.selection.label)}</span>` : ""}${(e.pins || []).map((p) =>
         `<span class="chip" title="${esc(p.eid)}"><span class="n">${p.n}</span> S${p.slide} · ${esc(p.label || p.eid)}</span>`).join("")}${
         e.screenshot?.file ? shotChip(e.screenshot.file, `screenshot S${e.screenshot.slide}`) : e.screenshot ? '<span class="chip">📷 screenshot</span>' : ""}${(e.attachments || []).map((a) =>
-        `<span class="chip att-chip" title="${esc(a.path)}">${a.kind === "image" ? `<img src="/deck/${esc(a.path)}" alt="">` : a.kind === "pdf" ? "📄" : "🔊"} ${esc(a.path.split("/").pop())}</span>`).join("")}</div>` : ""}`;
+        `<span class="chip att-chip" title="${esc(a.path)}">${a.kind === "image" ? `<img src="${BASE}deck/${esc(a.path)}" alt="">` : a.kind === "pdf" ? "📄" : "🔊"} ${esc(a.path.split("/").pop())}</span>`).join("")}</div>` : ""}`;
     case "assistant": return md(e.text);
     case "tool":
       return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.shot ? " " + shotChip(e.shot) : ""}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
@@ -645,7 +675,7 @@ chatEl.addEventListener("error", (e) => {
 chatEl.addEventListener("click", async (e) => {
   const s = e.target.closest("[data-shot]");
   if (s) {
-    $("shot-img").src = `/shots/${encodeURIComponent(s.dataset.shot)}`;
+    $("shot-img").src = `${BASE}shots/${encodeURIComponent(s.dataset.shot)}`;
     $("shot-title").textContent = s.dataset.shot;
     $("shot-dialog").showModal();
     return;
@@ -770,7 +800,7 @@ function applyStatus(s) {
     const folder = s.deck.split(/[\\/]/).filter(Boolean).pop() || s.deck;
     const name = s.deckFile && s.deckFile !== "index.html" ? s.deckFile : folder;
     $("deck-name").textContent = name;
-    $("deck-name").title = `${s.deck}/${s.deckFile || "index.html"}`;
+    $("deck-btn").title = `${s.deck}/${s.deckFile || "index.html"}${FRONT ? " (click for other decks)" : ""}`;
     if ($("deck-file")) $("deck-file").textContent = s.deckFile || "index.html";
     document.title = `${name} · PinDeck`;
   }
@@ -815,7 +845,7 @@ function applyStatus(s) {
   renderToolbar();
 }
 function connect() {
-  const es = new EventSource("/api/events");
+  const es = new EventSource(BASE + "api/events");
   es.addEventListener("hello", (ev) => {
     const d = JSON.parse(ev.data);
     // reconnected after missing file events (tunnel dropped, laptop asleep): show the files as they are now
@@ -891,7 +921,7 @@ $("add-slide-menu").addEventListener("click", async (e) => {
   if (!res.ok) return toast(d.error || "Could not add the slide.");
   state.current = d.index;   // the reload opens the new slide ...
   state.pendingTitleEdit = item.dataset.slide !== "duplicate";   // ... with its title ready for typing
-  try { localStorage.setItem("editor.slide", String(d.index)); } catch {}
+  try { localStorage.setItem(SLIDE_KEY, String(d.index)); } catch {}
   loadMain();
 });
 
@@ -904,7 +934,7 @@ $("import-file").addEventListener("change", async () => {
   $("import-file").value = "";
   if (!file) return;
   toast(`Reading ${file.name}…`);
-  const res = await fetch("/api/import", { method: "POST", body: file,
+  const res = await fetch(BASE + "api/import", { method: "POST", body: file,
     headers: { "x-filename": encodeURIComponent(file.name), "content-type": "application/octet-stream" } });
   const d = await res.json().catch(() => ({}));
   if (!res.ok) return toast(d.error || `Could not read ${file.name}.`);
@@ -948,7 +978,7 @@ function showImportThumbs(ev) {
   for (const c of importChecks()) {
     const img = new Image();
     img.alt = "";
-    img.src = `/api/import-thumb?id=${importing.id}&n=${c.value}`;
+    img.src = `${BASE}api/import-thumb?id=${importing.id}&n=${c.value}`;
     c.closest(".thumb").append(img);
   }
 }
@@ -966,7 +996,7 @@ $("import-dialog").addEventListener("close", async () => {
   toast(`Imported ${d.count} slide${d.count > 1 ? "s" : ""}.` + (d.missing ? ` ${d.missing} diagram${d.missing > 1 ? "s" : ""} could not be pictured (no PowerPoint or Keynote).` : "") +
     (d.refining ? ` The assistant is improving ${d.refining === 1 ? "the complex slide" : `${d.refining} complex slides`}.` : ""), { ms: 5000 });
   state.current = d.index;
-  try { localStorage.setItem("editor.slide", String(d.index)); } catch {}
+  try { localStorage.setItem(SLIDE_KEY, String(d.index)); } catch {}
   loadMain();
 });
 
@@ -1113,7 +1143,7 @@ const kindOf = (f) => (f.type.startsWith("image/") || IMAGE_EXT.test(f.name) ? "
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
 
 async function uploadBlob(blob, name) {
-  const res = await fetch("/api/upload", { method: "POST", body: blob,
+  const res = await fetch(BASE + "api/upload", { method: "POST", body: blob,
     headers: { "x-filename": encodeURIComponent(name), "content-type": blob.type || "application/octet-stream" } });
   const d = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(d.error || `Could not upload ${name}.`);
@@ -1201,7 +1231,7 @@ function renderAttachments() {
          a.pages ? `${a.pages} page${a.pages > 1 ? "s" : ""}` : "",
          fmtBytes(a.bytes), a.droppedAt ? `dropped on slide ${a.droppedAt.slide.index + 1}` : ""].filter(Boolean).join(" · ");
     return `<span class="att ${a.status}" title="${esc(a.path || a.name)}">
-      ${a.kind === "image" ? `<img class="thumb" src="${a.preview || "/deck/" + esc(a.path)}" alt="">` : `<span class="icon-box">${a.kind === "pdf" ? "📄" : "🔊"}</span>`}
+      ${a.kind === "image" ? `<img class="thumb" src="${a.preview || BASE + "deck/" + esc(a.path)}" alt="">` : `<span class="icon-box">${a.kind === "pdf" ? "📄" : "🔊"}</span>`}
       <span class="meta"><b>${esc(a.path ? a.path.split("/").pop() : a.name)}</b><span>${esc(info)}</span></span>
       ${a.status === "uploading" ? '<span class="spinner"></span>' : ""}
       <button class="x" data-unattach="${a.id}" aria-label="Remove ${esc(a.name)}">×</button></span>`;

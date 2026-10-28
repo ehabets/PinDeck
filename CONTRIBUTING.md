@@ -9,7 +9,7 @@ Open an issue with:
 * what you did, what you expected and what happened instead;
 * the PinDeck version (`package.json`), Node version, operating system and browser;
 * for AI issues: the selected provider, model, reasoning effort, and installed backend CLI version;
-* the terminal output of `node server.mjs`, and errors from the browser console if there are any;
+* the terminal output of `pindeck` (or `node front.mjs`), and errors from the browser console if there are any;
 * if a deck is involved: the smallest piece of `index.html` (and `theme.css`) that shows the problem;
 * for the PowerPoint import: a small `.pptx` with only the slide that goes wrong, if you can share it.
 
@@ -28,7 +28,7 @@ the code saves work on both sides.
 git clone https://github.com/ehabets/PinDeck.git
 cd PinDeck
 node cli.mjs git-setup ocean-example   # keep PinDeck's data-eid ids out of your commits
-node server.mjs ocean-example          # then open http://127.0.0.1:5180/
+node front.mjs ocean-example           # then open http://127.0.0.1:5180/
 ```
 
 There is nothing to install: PinDeck has no npm dependencies. You need macOS or Linux, Node 20 or later
