@@ -543,7 +543,15 @@ const status = () => ({ busy: state.busy, switching: state.switching, preparing:
   chrome: CAPS.screenshot.available, slideSelector: deckNow.selector, deckProblem: deckNow.problem,
   capabilities: publicCapabilities(CAPS), rev: deckRev(),
   undo: changeLabel(liveTurns().at(-1)), undoId: liveTurns().at(-1)?.id ?? null, redo: changeLabel(state.redo.at(-1)) });
-const pushStatus = () => broadcast("status", status());
+/* Pushed to the editors on every change. The model lists (both providers' catalogs) go along only when they
+   changed since the last push: the editor keeps the last ones it got. */
+let catalogSent = "";
+const pushStatus = () => {
+  const st = status(), lists = JSON.stringify(catalog);
+  if (lists === catalogSent) delete st.models;
+  catalogSent = lists;
+  broadcast("status", st);
+};
 
 const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md"), "utf8")
   .replaceAll("{{CLI}}", CLI_CMD).replaceAll("{{DECK}}", DECK_FILE) + capabilityPrompt(CAPS, CLI_CMD) +

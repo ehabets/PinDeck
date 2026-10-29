@@ -1454,6 +1454,20 @@ function events(t, s) {
   return list;
 }
 
+test("Status pushes carry the model lists only when they changed", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  await waitFor(async () => { const st = (await s.api("status")).data; return st.models.claude.models.length && st.models.codex.models.length; }, "the model lists");
+  await sleep(300);
+  const list = events(t, s);
+  await waitFor(() => list.some((e) => e.ev === "hello"), "hello");
+  assert.ok(list.find((e) => e.ev === "hello").data.status.models.claude.models.length, "a new editor gets them");
+  const eid = firstSlideEid(fx.deck);
+  assert.equal((await s.api("notes", { eid, text: "a hand edit" })).status, 200);
+  await waitFor(() => list.some((e) => e.ev === "status"), "a status push");
+  assert.ok(list.filter((e) => e.ev === "status").every((e) => !("models" in e.data)), "unchanged lists are not sent again");
+});
+
 /* On Linux, Node's recursive watch lost a file once it was replaced by a rename: the second save went unseen */
 for (const platform of [...new Set([REAL, "linux"])]) {
   const mocked = platform !== REAL ? ` (process.platform mocked on ${REAL}: code path only)` : "";

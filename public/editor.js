@@ -863,6 +863,7 @@ document.addEventListener("keydown", (e) => {
 /* ---- Server events ---------------------------------------------------------------------------------- */
 let shownProblem = null;   // the deck problem last shown, so a status update does not repeat it
 function applyStatus(s) {
+  if (!s.models) s.models = state.status?.models;   // sent only when they change
   const undoMoved = s.undoId !== state.status?.undoId;
   state.status = s;
   if (undoMoved) rerenderTurns();   // the Undo button moves to the change that is now the most recent
