@@ -968,6 +968,22 @@ test("pdf-figure finds a PDF of the deck by its real path when the deck's path g
   assert.doesNotMatch(String(r.data), /No PDF/, String(r.data));
 });
 
+test("A Claude CLI without `auth status --json` still starts; one that says it is signed out is reported so", async (t) => {
+  const fx = fixture(t);
+  const old = path.join(fx.root, "old-claude");
+  fs.writeFileSync(old, `#!/bin/sh\nif [ "$1" = auth ]; then echo "error: unknown command 'auth'" >&2; exit 1; fi\nexec "${FAKE_AGENT}" "$@"\n`, { mode: 0o755 });
+  const s = await startServer(t, fx, { env: { CLAUDE_BIN: old } });
+  assert.equal((await s.api("message", { text: "hello" })).status, 200);
+  const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  assert.equal(turn.error, null, "the turn ran");
+  await s.killAll();
+  const fx2 = fixture(t);
+  const s2 = await startServer(t, fx2, { env: { FAKE_AGENT_MODE: "auth-fail" } });
+  assert.equal((await s2.api("message", { text: "hello" })).status, 200);
+  const failed = await waitFor(() => chatOf(fx2).find((e) => e.kind === "turn"), "the failed turn");
+  assert.match(failed.error, /Claude is not signed in/);
+});
+
 test("Decks are .html files: a .htm file is not one", async (t) => {
   const fx = fixture(t);
   const old = path.join(fx.deck, "old.htm");
