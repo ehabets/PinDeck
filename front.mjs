@@ -16,7 +16,6 @@
 
 import http from "node:http";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
@@ -25,6 +24,7 @@ import { isSupportedPlatform, detectCapabilities, publicCapabilities, parsePort 
 import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { goodHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
+import { assetRoots } from "./lib/asset-roots.mjs";
 import { registerServer, printLogin } from "./lib/servers.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
@@ -60,13 +60,13 @@ if (homeNote) console.warn(homeNote);
 const START = deckTarget(argv[0] || process.cwd());
 if (process.env.CLAUDE_MODEL)   // PinDeck 2 read it
   console.warn(`CLAUDE_MODEL is not used by PinDeck 3: choose the model in the editor's model menu, or start with --model ${process.env.CLAUDE_MODEL}.`);
-const expandHome = (p) => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
 let fileConfig = {};
 try { fileConfig = JSON.parse(fs.readFileSync(path.join(HOME_DIR, "config.json"), "utf8")); } catch {}
 if (!fileConfig || typeof fileConfig !== "object" || Array.isArray(fileConfig)) fileConfig = {};   // the deck server says why
-const ROOTS = [START.dir, ...assetArgs, ...(Array.isArray(fileConfig.assetRoots) ? fileConfig.assetRoots : [])]
-  .map((r) => path.resolve(expandHome(String(r))))
-  .filter((r, i, all) => all.indexOf(r) === i && (() => { try { return fs.statSync(r).isDirectory(); } catch { return false; } })());
+// a missing asset root stops the start, before anything is written; one that goes later lists nothing
+const givenRoots = assetRoots(assetArgs, fileConfig);
+if (givenRoots.missing.length) { console.error(`Asset root ${givenRoots.missing[0]} is not a folder.\n\n${USAGE}`); process.exit(2); }
+const ROOTS = [...new Set([START.dir, ...givenRoots.roots])];
 const decksNow = () => listDecks(ROOTS);
 const chooser = !START.named && !fs.existsSync(path.join(START.dir, START.file)) && decksNow().some((d) => !d.problem);
 

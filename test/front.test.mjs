@@ -371,3 +371,16 @@ test("Front: a chat written by PinDeck 2 in the state folder is pointed out", as
   assert.match(s.output(), /holds a chat written by PinDeck 2 \(decks\/old-deck-12345678\/chat\.json\)\. If PinDeck 2 uses this folder too/);
   assert.equal(s.output().match(/written by PinDeck 2/g).length, 1, "once, by the front");
 });
+
+test("Front: an asset root that goes while PinDeck runs: its decks leave the list, the other decks still open", async (t) => {
+  const fx = fixture(t);
+  const shared = path.join(fx.root, "shared");
+  fs.cpSync(path.join(ROOT, "ocean-example"), path.join(shared, "talk"), { recursive: true });
+  const s = await startFront(t, fx, [fx.talks, "--asset-root", shared]);
+  assert.ok((await s.api("/api/decks")).data.decks.some((d) => d.root === shared));
+  fs.rmSync(shared, { recursive: true, force: true });
+  assert.ok(!(await s.api("/api/decks")).data.decks.some((d) => d.root === shared));
+  const second = key(path.join(fx.talks, "second.html"));
+  assert.equal((await s.api(`/d/${second}/api/status`)).status, 200, "a deck server started now leaves the gone root out");
+  await waitFor(() => /Asset root .*shared is not a folder \(any more\): left out\./.test(s.output()), "the warning");
+});

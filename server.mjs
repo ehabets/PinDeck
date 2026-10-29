@@ -19,7 +19,6 @@
 import http from "node:http";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, execFile } from "node:child_process";
@@ -41,6 +40,7 @@ import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
 import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { listDecks, linkProblem } from "./lib/deck-list.mjs";
+import { assetRoots } from "./lib/asset-roots.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
 import { goodHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
@@ -510,14 +510,13 @@ state.provider = settings.provider;
    it, so a relative path such as ../shared/style.css reaches its file. Every file served, from the deck
    or from /files/, must really lie (after following symlinks) inside the deck folder or an asset root:
    a symlink that leads anywhere else is refused. */
-const expandHome = (p) => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
-const ASSET_ROOTS = [...assetArgs, ...(Array.isArray(fileConfig.assetRoots) ? fileConfig.assetRoots : [])].map((r) => {
-  const abs = path.resolve(expandHome(String(r)));
-  let st = null;
-  try { st = fs.statSync(abs); } catch {}
-  if (!st?.isDirectory()) { console.error(`Asset root ${abs} is not a folder.\n\n${USAGE}`); process.exit(2); }
-  return abs;
-});
+// on its own a missing one stops the start; behind the front, which lists decks only from roots that exist,
+// one that is gone since the front started is left out with a warning, so the deck still opens
+const { roots: ASSET_ROOTS, missing: missingRoots } = assetRoots(assetArgs, fileConfig);
+for (const r of missingRoots) {
+  if (!FRONT) { console.error(`Asset root ${r} is not a folder.\n\n${USAGE}`); process.exit(2); }
+  console.warn(`Asset root ${r} is not a folder (any more): left out.`);
+}
 const within = (dir, p) => p === dir || p.startsWith(dir + path.sep);
 const realOr = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
 const SERVE_ROOT = ASSET_ROOTS.filter((r) => within(r, DECK_DIR)).sort((a, b) => a.length - b.length)[0] || null;
