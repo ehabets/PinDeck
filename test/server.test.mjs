@@ -865,6 +865,24 @@ test("A deck keeps its provider and conversation when another deck switches; --p
   assert.deepEqual(st.settings, { provider: "claude", model: "sonnet", effort: "low" });
 });
 
+test("A deck that never chose a model keeps the one its conversation started with, not another deck's later choice", async (t) => {
+  const deckFile = (fx) => { try { return JSON.parse(fs.readFileSync(path.join(fx.home, "decks", fs.readdirSync(path.join(fx.home, "decks"))[0], "chat.json"))); } catch { return {}; } };
+  for (const args of [[], ["--model", "haiku"]]) {   // a run-only --model is not kept
+    const fx = fixture(t);
+    writeConfig(fx, { provider: "claude", model: "sonnet", effortPreferences: {} });
+    let s = await startServer(t, fx, { args: ["--port", "0", ...args] });
+    assert.equal((await s.api("message", { text: "hello" })).status, 200);
+    await waitFor(() => deckFile(fx).settings?.model === "sonnet", "the deck's own choice saved", 10000);
+    await s.killAll();
+    // another deck chose Haiku meanwhile
+    writeConfig(fx, { provider: "claude", model: "haiku", effortPreferences: {} });
+    s = await startServer(t, fx);
+    const st = await settled(s);
+    assert.equal(st.settings.model, "sonnet", `this deck stays on Sonnet (${args.join(" ") || "no options"})`);
+    await s.killAll();
+  }
+});
+
 test("Saved settings PinDeck cannot use as they are: a usable model and effort before the first message", async (t) => {
   for (const [config, expect] of [
     [{ provider: "codex" }, { provider: "codex", model: "gpt-test", effort: "medium" }],   // no model: Codex's default

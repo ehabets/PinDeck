@@ -490,6 +490,7 @@ const settings = deckSettings ? { ...deckSettings }
   // a chat saved before decks kept their own settings: its provider, with that provider's default model
   : state.hasChat && state.provider !== defaults.provider ? { provider: state.provider, model: state.provider === "claude" ? "sonnet" : "", effort: null }
   : { ...defaults };
+const ownSettings = { ...settings };   // without --provider and --model, which apply to this run only
 const startNotices = [];   // added to the chat once the port is bound (a failed start writes nothing)
 if (PROVIDER) {
   if (!PROVIDERS.includes(PROVIDER)) { console.error(`Unknown provider "${PROVIDER}": use claude or codex.\n\n${USAGE}`); process.exit(2); }
@@ -755,6 +756,12 @@ async function ensureSession() {
     if (!catalog[settings.provider].models.length) await discoverModels({ providers: [settings.provider] });
     settle();
     Object.assign(settings, selectModel(catalog, settings, {}));
+    // a deck without a choice of its own keeps the one its conversation starts with, not the next one another
+    // deck saves in config.json; a run-only --provider or --model is not kept
+    if (!deckSettings) {
+      deckSettings = PROVIDER || MODEL ? { ...ownSettings } : { provider: settings.provider, model: settings.model, effort: settings.effort };
+      saveChat();
+    }
     const agent = makeSession({ ...settings });
     session = agent;
     try {
