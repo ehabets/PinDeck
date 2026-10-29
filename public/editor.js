@@ -47,10 +47,22 @@ function loadMain() {
   $("stage").appendChild(f);
   if (pendingMain) pendingMain.remove();
   pendingMain = f;
+  // a deck page whose slides never start (a script that fails, broken HTML, the file gone): say so
+  setTimeout(() => { if (pendingMain === f) stageProblem("The deck page did not start within 15 seconds."); }, 15000);
 }
+/* Why the stage stays empty. Messages still go to the assistant, which can be asked to fix the deck. */
+function stageProblem(why) {
+  let el = $("stage-problem");
+  if (!why) return el?.remove();
+  if (!el) { el = document.createElement("div"); el.id = "stage-problem"; el.className = "stage-problem"; $("stage").appendChild(el); }
+  el.innerHTML = `<b>PinDeck cannot show this deck.</b><span>${esc(why)}</span>` +
+    `<span>Fix the file, or describe the problem in the chat and the assistant can fix it.</span>`;
+}
+let measureReject = null;
 function loadMeasure() {
   measure?.iframe.remove();
-  measureReady = new Promise((r) => (measureResolve = r));
+  measureReady = new Promise((resolve, reject) => { measureResolve = resolve; measureReject = reject; });
+  measureReady.catch(() => {});
   const f = document.createElement("iframe");
   f.className = "measure";
   f.setAttribute("aria-hidden", "true");
@@ -81,14 +93,18 @@ addEventListener("message", async (e) => {
   if (!from) return;
   if (m.pindeck === "bridge-answer") { answers.get(m.id)?.(m.value); answers.delete(m.id); return; }
   if (m.pindeck !== "host" || !Object.hasOwn(editorHost, m.method)) return;
-  // only a frame that is showing may edit; a frame still loading may only say that it is ready
-  if (m.method !== "bridgeReady" && from !== main?.iframe) return;
+  // only a frame that is showing may edit; a frame still loading may only say that it is ready, or why not
+  if (m.method !== "bridgeReady" && m.method !== "deckFailed" && from !== main?.iframe) return;
   let value = null;
   try { value = await editorHost[m.method](...(Array.isArray(m.args) ? m.args : []), e.source); } catch (err) { console.error(err); }
   e.source.postMessage({ pindeck: "host-answer", id: m.id, value: value ?? null }, "*");
 });
 
 const editorHost = {
+  deckFailed(role, why, win) {
+    if (role === "measure") { if (measure?.iframe.contentWindow === win) measureReject?.(new Error(why)); return; }
+    if (pendingMain?.contentWindow === win || main?.iframe.contentWindow === win) stageProblem(why);
+  },
   bridgeReady(role, inf, win) {
     if (role === "measure") {
       if (measure && measure.iframe.contentWindow === win) { measure.bridge = bridgeOf(win); measureResolve(measure.bridge); }
@@ -101,6 +117,7 @@ const editorHost = {
     pendingMain = null;
     main.iframe.classList.remove("loading");
     old?.iframe.remove();
+    stageProblem(null);
     state.slides = inf.slides;
     state.current = Math.min(state.current, state.slides.length - 1);
     if (inf.current !== state.current) bridge.goto(state.current);
@@ -240,9 +257,11 @@ function toast(msg, { html = false, ms = 3200 } = {}) {
   toastTimer = setTimeout(() => ($("toast").hidden = true), ms);
 }
 
+// a deck page that never starts, or stops answering, must not hold up a message: give up after a while
+const within = (ms, p, what) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))]);
 async function measureSlide(index) {
-  const b = await measureReady;
-  return b.measure(index);
+  const b = await within(8000, measureReady, "The measuring frame");
+  return within(8000, b.measure(index), "Measuring the slide");
 }
 // one measurement at a time: the measure frame has a single "current slide"
 let measureChain = Promise.resolve();

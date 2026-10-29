@@ -1168,6 +1168,11 @@
     deck.ready(() => (MODE === "pdf" ? deck.print() : start()));
     return;
   }
+  if (typeof Reveal === "undefined" && (MODE === "main" || MODE === "measure")) {
+    // nothing to edit: the editor says why, instead of a blank stage (and stops waiting for measurements)
+    host()?.deckFailed(MODE, "reveal.js did not load: the deck's script tag for it points to a file or address that cannot be reached.");
+    return;
+  }
   if (typeof Reveal === "undefined" || MODE === "pdf") return;   // reveal.js lays out its own print view
   deck = revealDeck();
   deck.ready(start);
