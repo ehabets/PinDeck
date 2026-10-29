@@ -40,7 +40,7 @@ import { unsupportedMessage } from "./lib/frameworks.mjs";
 import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
 import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
-import { listDecks } from "./lib/deck-list.mjs";
+import { listDecks, linkProblem } from "./lib/deck-list.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
@@ -96,6 +96,8 @@ const CAPS = detectCapabilities();
 function checkDeck() {
   const file = path.join(DECK_DIR, DECK_FILE);
   if (!fs.existsSync(file)) return `No ${DECK_FILE} in ${DECK_DIR}`;
+  const linked = linkProblem(DECK_DIR, DECK_FILE);
+  if (linked) return linked + " Nothing was changed.";
   try { fs.accessSync(file, fs.constants.R_OK | fs.constants.W_OK); }
   catch { return `${file} cannot be read and written (check its permissions).`; }
   // saving replaces the file through a temporary file next to it, so the folder must be writable too

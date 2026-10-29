@@ -964,6 +964,28 @@ test("A figures/ or export/ folder that links out of the deck: PinDeck neither w
   assert.ok(fs.existsSync(path.join(outside, "figures", "transmission_loss.svg")));
 });
 
+test("Symlinked decks: a linked folder is listed and opens; a deck file linked from another folder says why not", async (t) => {
+  const fx = fixture(t);
+  const talks = path.join(fx.root, "talks"), shared = path.join(fx.root, "shared");
+  fs.mkdirSync(talks);
+  fs.mkdirSync(shared);
+  fs.renameSync(fx.deck, path.join(shared, "ext deck"));
+  fs.symlinkSync(path.join(shared, "ext deck"), path.join(talks, "linked deck"));
+  fs.symlinkSync(path.join(shared, "ext deck", "index.html"), path.join(talks, "linked.html"));
+  const list = listDecks([talks]);
+  assert.deepEqual(list.map((d) => d.rel), ["linked.html", "linked deck/index.html"]);
+  assert.match(list[0].problem, /^linked\.html is a link to a deck in another folder: open that deck itself \(.*ext deck\/index\.html\)\.$/);
+  assert.equal(list[1].problem, null);
+  const bad = spawnServer(fx, { deck: path.join(talks, "linked.html") });
+  fx.stops.push(bad.killAll);
+  assert.equal((await bad.exited).code, 1);
+  assert.match(bad.output(), /linked\.html is a link to a deck in another folder/);
+  assert.equal(fs.existsSync(fx.home), false, "nothing written");
+  const s = await startServer(t, fx, { deck: path.join(talks, "linked deck") });
+  const page = await fetch(`${s.url}/deck/?editor=main`, { headers: { "x-editor-token": s.token } });
+  assert.equal(page.status, 200, "the linked folder's deck is served");
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);
