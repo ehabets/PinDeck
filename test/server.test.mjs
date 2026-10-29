@@ -738,6 +738,76 @@ test("A named deck file: served, edited, given ids and permissions, with state o
   assert.ok(out.includes(`:${s.port}/login?code=`), "login for the named deck reaches its server");
 });
 
+/* ---- Provider, model and effort: each deck's own; config.json the default for new decks ------------- */
+const writeConfig = (fx, c) => { fs.mkdirSync(fx.home, { recursive: true }); fs.writeFileSync(path.join(fx.home, "config.json"), typeof c === "string" ? c : JSON.stringify(c)); };
+const readConfig = (fx) => JSON.parse(fs.readFileSync(path.join(fx.home, "config.json"), "utf8"));
+const settled = async (s) => waitFor(async () => { const st = (await s.api("status")).data; return st.models.claude.models.length && st.models.codex.models.length && st; }, "the model lists");
+
+test("A deck keeps its provider and conversation when another deck switches; --provider says it starts anew", async (t) => {
+  const fx = fixture(t);
+  writeConfig(fx, { provider: "claude", model: "sonnet", effortPreferences: {} });
+  let s = await startServer(t, fx);
+  assert.equal((await s.api("message", { text: "remember X=42" })).status, 200);
+  await waitFor(() => chatOf(fx).find((e) => e.kind === "turn") && JSON.parse(fs.readFileSync(path.join(fx.home, "decks", fs.readdirSync(path.join(fx.home, "decks"))[0], "chat.json"))).sessionId, "the turn, saved");
+  await s.killAll();
+  // another deck chose Codex meanwhile (and saved an effort for it)
+  writeConfig(fx, { provider: "codex", model: "gpt-test", effort: "low", effortPreferences: { "codex:gpt-test": "low" } });
+  s = await startServer(t, fx);
+  let st = await settled(s);
+  assert.equal(st.settings.provider, "claude", "this deck's conversation stays with Claude");
+  assert.equal(st.sessionId, "fake-session-1");
+  // a choice here is merged into config.json as it is now: the other deck's preference stays
+  assert.equal((await s.api("settings", { effort: "low" })).status, 200);
+  assert.deepEqual(readConfig(fx).effortPreferences, { "codex:gpt-test": "low", "claude:sonnet": "low" });
+  assert.equal(readConfig(fx).provider, "claude");
+  await waitFor(() => JSON.parse(fs.readFileSync(path.join(fx.home, "decks", fs.readdirSync(path.join(fx.home, "decks"))[0], "chat.json"))).settings?.effort === "low", "the deck's settings saved");
+  await s.killAll();
+  // --provider codex for one run: a new conversation, the old session archived, and the chat says so
+  s = await startServer(t, fx, { args: ["--port", "0", "--provider", "codex"] });
+  st = await settled(s);
+  assert.deepEqual(st.settings, { provider: "codex", model: "gpt-test", effort: "low" }, "Codex's own model and saved effort");
+  assert.equal(st.sessionId, null);
+  await waitFor(() => chatOf(fx).some((e) => e.kind === "notice" && e.text === "Switched to OpenAI / ChatGPT for this run (--provider codex) · New conversation."), "the notice");
+  await s.killAll();
+  // without it, the deck is back on its own choice
+  s = await startServer(t, fx);
+  st = await settled(s);
+  assert.deepEqual(st.settings, { provider: "claude", model: "sonnet", effort: "low" });
+});
+
+test("Saved settings PinDeck cannot use as they are: a usable model and effort before the first message", async (t) => {
+  for (const [config, expect] of [
+    [{ provider: "codex" }, { provider: "codex", model: "gpt-test", effort: "medium" }],   // no model: Codex's default
+    [{ provider: "claude", model: "sonnet", effort: "xhigh" }, { provider: "claude", model: "sonnet", effort: "medium" }],   // effort it does not offer
+    [{ provider: "claude", model: "opus-old" }, { provider: "claude", model: "sonnet", effort: "medium" }],   // a model it no longer lists
+    ["null", { provider: "claude", model: "sonnet", effort: "medium" }],   // not settings at all
+    ['"codex"', { provider: "claude", model: "sonnet", effort: "medium" }],
+  ]) {
+    const fx = fixture(t);
+    writeConfig(fx, typeof config === "string" ? config : JSON.stringify(config));
+    const s = await startServer(t, fx);
+    const st = await settled(s);
+    assert.deepEqual(st.settings, expect, JSON.stringify(config));
+    if (config.model === "opus-old") await waitFor(() => chatOf(fx).some((e) => e.kind === "notice" && /"opus-old" is not available from Claude now: using Sonnet/.test(e.text)), "the notice");
+    assert.equal((await s.api("settings", { effort: "low" })).status, 200);
+    const saved = readConfig(fx);
+    assert.equal(saved.effort, "low");
+    assert.ok(!("0" in saved), "a string is not spread into the settings");
+    await s.killAll();
+  }
+});
+
+test("Switch with summary of an empty conversation: a new conversation, no empty handover", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  await settled(s);
+  assert.equal((await s.api("settings", { provider: "codex", model: "gpt-test", handover: "summary" })).status, 200);
+  await waitFor(() => chatOf(fx).some((e) => e.kind === "notice" && e.text === "Switched to OpenAI / ChatGPT · New conversation."), "the notice");
+  assert.equal((await s.api("message", { text: "hello codex" })).status, 200);
+  await waitFor(() => fakeLog(fx).find((e) => e.event === "input" && e.provider === "codex" && e.type === "user"), "the message");
+  assert.equal(fakeLog(fx).find((e) => e.event === "input" && e.provider === "codex" && e.type === "user").text.trim(), "hello codex");
+});
+
 test("Decks in one folder: a turn leaves out the other decks, and what another deck's assistant wrote meanwhile", async (t) => {
   const fx = fixture(t);
   const talk = path.join(fx.deck, "talk.html");

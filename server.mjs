@@ -29,7 +29,7 @@ import { unifiedDiff } from "./lib/diff.mjs";
 import { ClaudeSession } from "./lib/claude.mjs";
 import { CodexSession } from "./lib/codex.mjs";
 import { createDeckTools } from "./lib/agent-tools.mjs";
-import { migrateSettings, selectModel, handoverSummary, curateModels } from "./lib/models.mjs";
+import { PROVIDERS, migrateSettings, selectModel, handoverSummary, curateModels } from "./lib/models.mjs";
 import { formatLayout, formatPin } from "./lib/layout.mjs";
 import { printLayout, printPdf, PDF_HEAD_TAG, PDF_PAGE_TAG } from "./lib/pdf.mjs";
 import { readPptx } from "./lib/pptx.mjs";
@@ -66,6 +66,8 @@ const LOGIN = argv[0] === "login";
 if (LOGIN) argv.shift();
 const PROVIDER = opt("--provider", "");
 const MODEL = opt("--model", "");
+if (process.env.CLAUDE_MODEL && !LOGIN && !FRONT)   // PinDeck 2 read it; behind the front, the front says so
+  console.warn(`CLAUDE_MODEL is not used by PinDeck 3: choose the model in the editor's model menu, or start with --model ${process.env.CLAUDE_MODEL}.`);
 /* The deck: a file (talk.html), or a folder, which means its index.html (see lib/deck-target.mjs) */
 const { dir: DECK_DIR, file: DECK_FILE, named: NAMED, name: DECK_NAME, key: deckKey } = deckTarget(argv[0] || process.cwd());
 const EDITABLE = [DECK_FILE, "theme.css"];         // both backends may edit these
@@ -413,7 +415,8 @@ const state = {
 };
 try {
   const saved = JSON.parse(fs.readFileSync(CHAT_FILE, "utf8"));
-  Object.assign(state, { chat: saved.chat || [], seq: saved.seq || 0, sessionId: saved.sessionId || null, provider: saved.provider || "claude", handover: saved.handover || "", sessionArchive: saved.sessionArchive || [] });
+  Object.assign(state, { chat: saved.chat || [], seq: saved.seq || 0, sessionId: saved.sessionId || null, provider: saved.provider || "claude",
+    handover: saved.handover || "", sessionArchive: saved.sessionArchive || [], saved: saved.settings || null, hasChat: true });
 } catch {}
 /* Saved shortly after the last change, in one atomic write: overlapping writes could leave a broken file. */
 let chatTimer = null;
@@ -422,7 +425,8 @@ function writeChat() {
   chatTimer = null;
   try {
     writeAtomic(CHAT_FILE, JSON.stringify({ chat: state.chat.slice(-400), seq: state.seq, sessionId: state.sessionId,
-      provider: state.provider, handover: state.handover, sessionArchive: state.sessionArchive.slice(-50) }));
+      provider: state.provider, handover: state.handover, sessionArchive: state.sessionArchive.slice(-50),
+      settings: deckSettings ?? undefined }));
   } catch (e) { console.error(e.message); }
 }
 const saveChat = () => { chatTimer ??= setTimeout(writeChat, 100); };
@@ -436,24 +440,45 @@ function addEntry(entry) {
 }
 const liveTurns = () => state.turns.filter((t) => !t.undone);
 const changeLabel = (t) => (t ? (t.kind === "manual" ? t.label : "AI change") : null);
-/* The menu persists provider, model and effort. CLI overrides apply to this run only.
-   The v3 preview uses its own state directory so v2 can keep running independently. */
+/* Provider, model and effort belong to each deck, with its conversation: saved in its chat.json when chosen
+   in the menu, so another deck's choice never moves this deck's conversation to another backend. config.json
+   holds the last choice, which a new deck starts with, and each model's preferred effort. --provider and
+   --model apply to this run only. The v3 preview uses its own state directory so v2 can keep running. */
 const CONFIG_FILE = path.join(HOME_DIR, "config.json");
-let fileConfig = {};
-try { fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")); }
-catch (e) { if (e.code !== "ENOENT") console.warn(`${CONFIG_FILE} is not valid JSON; using the defaults.`); }
-const settings = migrateSettings(fileConfig);
-let effortPreferences = Object.fromEntries(Object.entries(fileConfig.effortPreferences || {}).filter(([, value]) => typeof value === "string"));
-// Preserve the legacy selection as the first model-specific preference.
-if (settings.effort) effortPreferences[`${settings.provider}:${settings.model}`] = settings.effort;
-if (PROVIDER) {
-  if (!["claude", "codex"].includes(PROVIDER)) { console.error(`Unknown provider "${PROVIDER}": use claude or codex.\n\n${USAGE}`); process.exit(2); }
-  settings.provider = PROVIDER;
-  if (!MODEL && PROVIDER !== fileConfig.provider) settings.model = PROVIDER === "claude" ? "sonnet" : "";
+const isObject = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+function readConfig(warn = false) {
+  try {
+    const c = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    if (isObject(c)) return c;
+    if (warn) console.warn(`${CONFIG_FILE} does not hold settings ({ ... }); using the defaults.`);
+  } catch (e) { if (warn && e.code !== "ENOENT") console.warn(`${CONFIG_FILE} is not valid JSON; using the defaults.`); }
+  return {};
 }
-if (MODEL) settings.model = MODEL;   // --model on the command line: this run only, not saved
-// A saved chat belongs to its provider, never to whichever CLI happens to be selected now.
-if (state.provider !== settings.provider) { state.sessionId = null; state.handover = ""; }
+const preferencesOf = (c) => Object.fromEntries(Object.entries(isObject(c.effortPreferences) ? c.effortPreferences : {}).filter(([, v]) => typeof v === "string"));
+const fileConfig = readConfig(true);
+let effortPreferences = preferencesOf(fileConfig);
+const defaults = migrateSettings(fileConfig);
+// the legacy single effort (v2): the preference of the model it was chosen for
+if (fileConfig.effort && defaults.model) effortPreferences[`${defaults.provider}:${defaults.model}`] ??= defaults.effort;
+let deckSettings = isObject(state.saved) && PROVIDERS.includes(state.saved.provider) ? migrateSettings(state.saved) : null;
+const settings = deckSettings ? { ...deckSettings }
+  // a chat saved before decks kept their own settings: its provider, with that provider's default model
+  : state.hasChat && state.provider !== defaults.provider ? { provider: state.provider, model: state.provider === "claude" ? "sonnet" : "", effort: null }
+  : { ...defaults };
+const startNotices = [];   // added to the chat once the port is bound (a failed start writes nothing)
+if (PROVIDER) {
+  if (!PROVIDERS.includes(PROVIDER)) { console.error(`Unknown provider "${PROVIDER}": use claude or codex.\n\n${USAGE}`); process.exit(2); }
+  if (PROVIDER !== settings.provider) Object.assign(settings, { provider: PROVIDER, model: PROVIDER === "claude" ? "sonnet" : "", effort: null });
+}
+if (MODEL && MODEL !== settings.model) Object.assign(settings, { model: MODEL, effort: null });   // this run only, not saved
+if (settings.effort == null) settings.effort = effortPreferences[`${settings.provider}:${settings.model}`] ?? null;
+// A saved conversation belongs to its provider: --provider for another one starts a new conversation, and says so
+if (state.provider !== settings.provider && (state.sessionId || state.chat.length)) {
+  if (state.sessionId) state.sessionArchive.push({ provider: state.provider, id: state.sessionId });
+  state.sessionId = null; state.handover = "";
+  const why = PROVIDER === settings.provider ? `for this run (--provider ${PROVIDER})` : "(this deck's own choice)";
+  startNotices.push({ kind: "notice", fresh: true, text: `Switched to ${providerName(settings.provider)} ${why} · New conversation.` });
+}
 state.provider = settings.provider;
 /* Asset roots (--asset-root, and "assetRoots" in config.json): folders outside the deck whose files the
    deck may use. The outermost one that contains the deck is served at /files/, with the deck page inside
@@ -645,6 +670,23 @@ async function discoverModels() {
   })).then(() => { pushStatus(); return catalog; }).finally(() => { discovering = null; });
   return discovering;
 }
+/* The model and effort as they will be used, once the backend has said what it offers: a saved or given
+   model it does not offer gives way to its default model (and the chat says so), an effort the model does
+   not offer to the model's preferred or default one. Shown before the first message is sent. */
+function settle() {
+  const { models, error } = catalog[settings.provider];
+  if (!models.length || error) return;   // discovery failed: its error answers the next message
+  let model = models.find((m) => m.id === settings.model);
+  if (!model) {
+    model = models.find((m) => m.isDefault) || models.find((m) => m.curated) || models[0];
+    if (settings.model) addEntry({ kind: "notice", text: `The model "${settings.model}" is not available from ${providerName(settings.provider)} now: using ${model.label} instead.` });
+    Object.assign(settings, { model: model.id, effort: null });
+  }
+  if (!model.efforts.includes(settings.effort)) {
+    const preferred = effortPreferences[`${settings.provider}:${model.id}`];
+    settings.effort = model.efforts.includes(preferred) ? preferred : model.defaultEffort ?? null;
+  }
+}
 async function ensureSession() {
   if (starting) return starting;
   if (session?.running || quitting) return;
@@ -652,6 +694,7 @@ async function ensureSession() {
   if (!available.available) throw new Error(available.reason);
   starting = (async () => {
     if (!catalog[settings.provider].models.length) await discoverModels();
+    settle();
     Object.assign(settings, selectModel(catalog, settings, {}));
     const agent = makeSession({ ...settings });
     session = agent;
@@ -660,8 +703,16 @@ async function ensureSession() {
   })().finally(() => { starting = null; });
   return starting;
 }
+function providerName(p) { return p === "codex" ? "OpenAI / ChatGPT" : "Claude"; }
+/* config.json as it is now (another deck may have written it since this one started), with this choice and
+   its effort preferences merged in, in one atomic write */
+function saveConfig(choice, preferences) {
+  const now = readConfig();
+  writeAtomic(CONFIG_FILE, JSON.stringify({ ...now, ...choice, effortPreferences: { ...preferencesOf(now), ...preferences } }, null, 2) + "\n");
+}
 async function changeSettings(requested) {
   if (state.busy || starting) throw new Error("Wait until the current request finishes before switching.");
+  effortPreferences = { ...effortPreferences, ...preferencesOf(readConfig()) };   // as other decks left them
   const choice = selectModel(catalog, settings, requested, effortPreferences);
   if (Object.keys(choice).every(k => choice[k] === settings[k])) return;
   const changingProvider = choice.provider !== settings.provider;
@@ -676,12 +727,13 @@ async function changeSettings(requested) {
     if (!candidate.running) throw new Error("The new backend stopped before it was ready.");
     const summary = changingProvider && requested.handover === "summary" ? handoverSummary(state.chat) : "";
     if (changingProvider && state.sessionId) state.sessionArchive.push({ provider: state.provider, id: state.sessionId });
-    const nextPreferences = { ...effortPreferences };
-    if (settings.effort) nextPreferences[`${settings.provider}:${settings.model}`] = settings.effort;
-    if (choice.effort) nextPreferences[`${choice.provider}:${choice.model}`] = choice.effort;
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...fileConfig, ...choice, effortPreferences: nextPreferences }, null, 2) + "\n");
-    effortPreferences = nextPreferences;
+    const changed = {};   // only the preferences this choice sets: the model left, and the model chosen
+    if (settings.effort) changed[`${settings.provider}:${settings.model}`] = settings.effort;
+    if (choice.effort) changed[`${choice.provider}:${choice.model}`] = choice.effort;
+    try { saveConfig(choice, changed); } catch (e) { console.error(e.message); }
+    effortPreferences = { ...effortPreferences, ...changed };
     Object.assign(settings, choice);
+    deckSettings = { ...choice };
     state.provider = choice.provider;
     if (changingProvider) { state.sessionId = candidate.sessionId || null; state.handover = summary; state.model = null; }
     if (reuse) candidate.settings = choice;
@@ -689,8 +741,8 @@ async function changeSettings(requested) {
     if (!reuse && candidate.initialEvent()) handleEvent(candidate.initialEvent());
     if (!reuse) retire(old);
     saveChat();
-    addEntry({ kind: "notice", text: changingProvider
-      ? `Switched to ${choice.provider === "codex" ? "OpenAI / ChatGPT" : "Claude"} · ${summary ? "Conversation summary will be shared" : "New conversation"}.`
+    addEntry({ kind: "notice", ...(changingProvider && !summary ? { fresh: true } : {}), text: changingProvider
+      ? `Switched to ${providerName(choice.provider)} · ${summary ? "Conversation summary will be shared" : "New conversation"}.`
       : `Model: ${choice.model}${choice.effort ? ` · ${choice.effort} effort` : ""}. The conversation continues.` });
   } catch (e) { if (session !== candidate) retire(candidate); throw e; }
   finally { state.busy = false; state.switching = false; pushStatus(); }
@@ -1806,14 +1858,8 @@ server.listen(PORT, "127.0.0.1", () => {
     for (const [name, c] of Object.entries(publicCapabilities(CAPS)))
       if (c && c.available === false) console.log(`  ${name}: off (${c.reason})`);
   }
-  discoverModels().then(() => {
-    if (!settings.model) {
-      const models = catalog[settings.provider].models;
-      const first = models.find(m => m.isDefault) || models[0];
-      if (first) { settings.model = first.id; settings.effort = first.defaultEffort; }
-    }
-    pushStatus();
-  });
+  for (const n of startNotices) addEntry(n);
+  discoverModels().then(() => { settle(); pushStatus(); });
 });
 /* Ctrl+C or SIGTERM: stop taking requests, let the backend end (it gets end of input, then SIGTERM, then
    SIGKILL), then exit. At most 6 s; a second Ctrl+C exits at once. A running turn is not resumed later. */

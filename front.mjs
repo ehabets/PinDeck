@@ -74,9 +74,12 @@ if (argv[0] === "login") {
 /* The start deck, and the folders whose decks the menu offers. A folder without index.html opens the list
    of its decks; if it has none, its deck server says why, as for any deck that cannot be opened. */
 const START = deckTarget(argv[0] || process.cwd());
+if (process.env.CLAUDE_MODEL)   // PinDeck 2 read it
+  console.warn(`CLAUDE_MODEL is not used by PinDeck 3: choose the model in the editor's model menu, or start with --model ${process.env.CLAUDE_MODEL}.`);
 const expandHome = (p) => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
 let fileConfig = {};
 try { fileConfig = JSON.parse(fs.readFileSync(path.join(HOME_DIR, "config.json"), "utf8")); } catch {}
+if (!fileConfig || typeof fileConfig !== "object" || Array.isArray(fileConfig)) fileConfig = {};   // the deck server says why
 const ROOTS = [START.dir, ...assetArgs, ...(Array.isArray(fileConfig.assetRoots) ? fileConfig.assetRoots : [])]
   .map((r) => path.resolve(expandHome(String(r))))
   .filter((r, i, all) => all.indexOf(r) === i && (() => { try { return fs.statSync(r).isDirectory(); } catch { return false; } })());
@@ -93,10 +96,10 @@ const decks = new Map();   // key -> { key, dir, file, label, proc, url, token, 
 const labelOf = (d) => (d.file === "index.html" ? path.basename(d.dir) : d.file);
 let quitting = false;
 
-/* Its output goes to this terminal, each line marked with the deck. hold(): keep the lines back for now */
+/* Its output goes to this terminal, each line marked with the deck. hold(l): keep the line back for now */
 function forward(stream, label, to, keep, hold = () => false) {
   let rest = "";
-  const put = (l) => { keep?.(l + "\n"); if (!hold()) to.write(`[${label}] ${l}\n`); };
+  const put = (l) => { keep?.(l + "\n"); if (!hold(l)) to.write(`[${label}] ${l}\n`); };
   stream.on("data", (chunk) => {
     const lines = (rest + chunk).split("\n");
     rest = lines.pop();
@@ -115,14 +118,18 @@ function openDeck(entry, start = false) {
   // its own process group: Ctrl+C reaches the front only, which then ends every deck once
   d.proc = spawn(process.execPath, [SERVER, entry.file === "index.html" ? entry.dir : path.join(entry.dir, entry.file),
     "--port", "0", ...PASS], { env: { ...process.env, PINDECK_FRONT: "1" }, stdio: ["ignore", "pipe", "pipe", "ipc"], detached: true });
+  // what it says before it listens: its reason if it stops; the start deck's warnings once it runs
   let said = "";
+  const held = [];
   forward(d.proc.stdout, d.label, process.stdout);
-  forward(d.proc.stderr, d.label, process.stderr, (l) => { said += l; }, () => start && !d.url);
+  forward(d.proc.stderr, d.label, process.stderr, (l) => { if (!d.url) said = (said + l).slice(-20000); },
+    (l) => start && !d.url && held.push(l));
   d.exited = new Promise((r) => d.proc.once("exit", r));
   d.ready = new Promise((resolve, reject) => {
     d.proc.on("message", (m) => {
       if (!m?.ready) return;
       Object.assign(d, { url: m.ready.url, token: m.ready.token });
+      for (const l of held.splice(0)) console.error(l);   // a start that went ahead anyway, as PinDeck said it before the front
       if (!start) console.log(`[${d.label}] opened: ${path.join(d.dir, d.file)}`);
       resolve(d);
     });

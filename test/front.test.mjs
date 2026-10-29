@@ -231,6 +231,19 @@ test("Front: the start deck's problem stops it with that message; nothing is wri
   assert.equal(ids(path.join(fx.talks, "index.html")), 0);
 });
 
+test("Front: the start deck's warnings are shown when it starts anyway", async (t) => {
+  for (const [config, warning] of [["{ \"provider\": \"codex\", }", /config\.json is not valid JSON; using the defaults\./],
+    ["null", /config\.json does not hold settings/]]) {
+    const fx = fixture(t);
+    fs.mkdirSync(fx.home, { recursive: true });
+    fs.writeFileSync(path.join(fx.home, "config.json"), config);
+    const s = await startFront(t, fx, [fx.talks], { CLAUDE_MODEL: "haiku" });
+    assert.match(s.output(), warning);
+    assert.match(s.output(), /CLAUDE_MODEL is not used by PinDeck 3: .*--model haiku/);
+    assert.equal((await s.api(`/d/${key(fx.talks)}/api/status`)).status, 200);
+  }
+});
+
 test("Front: a deck with no editor open closes after a while, and opens again when asked for", async (t) => {
   const fx = fixture(t);
   const s = await startFront(t, fx, [fx.talks], { PINDECK_IDLE_MS: "400" });
