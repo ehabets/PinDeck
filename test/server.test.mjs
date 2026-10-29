@@ -17,6 +17,7 @@ import zlib from "node:zlib";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { cliCommand, findExecutable } from "../lib/capabilities.mjs";
+import { listDecks } from "../lib/deck-list.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVER = path.join(ROOT, "server.mjs");
@@ -918,15 +919,14 @@ test("Decks in one folder: a turn leaves out the other decks, and what another d
   assert.equal(fs.existsSync(path.join(fx.deck, "notes-B.txt")), false);
 });
 
-test("A .htm deck is served as a page, like an .html one", async (t) => {
+test("Decks are .html files: a .htm file is not one", async (t) => {
   const fx = fixture(t);
   const old = path.join(fx.deck, "old.htm");
   fs.copyFileSync(path.join(fx.deck, "index.html"), old);
-  const s = await startServer(t, fx, { deck: old });
-  const r = await fetch(`${s.url}/deck/?editor=main`, { headers: { "x-editor-token": s.token } });
-  assert.equal(r.status, 200);
-  assert.equal(r.headers.get("content-type"), "text/html; charset=utf-8");
-  assert.match(await r.text(), /<script src="\/editor\/bridge\.js">/);
+  const r = await failedStart(t, fx, { deck: old });
+  assert.equal(r.code, 1);
+  assert.match(r.output, /No index\.html in .*old\.htm/);
+  assert.deepEqual(listDecks([fx.deck]).map((d) => d.file), ["index.html"]);
 });
 
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {

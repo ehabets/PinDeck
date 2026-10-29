@@ -150,7 +150,7 @@ function removeServerInfo() {
 }
 
 /* ---- Small helpers --------------------------------------------------------------- */
-const MIME = { html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", xhtml: "application/xhtml+xml", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8",
+const MIME = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8",
   mjs: "text/javascript; charset=utf-8", json: "application/json", svg: "image/svg+xml", png: "image/png",
   jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon",
   woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", wav: "audio/wav", mp3: "audio/mpeg",
@@ -554,7 +554,7 @@ function lockedPaths() {
    own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */
 function otherDecks() {
   let files = [];
-  try { files = fs.readdirSync(DECK_DIR).filter((f) => /\.html?$/i.test(f) && f !== DECK_FILE); } catch {}
+  try { files = fs.readdirSync(DECK_DIR).filter((f) => /\.html$/i.test(f) && f !== DECK_FILE); } catch {}
   const folders = [...new Set(listDecks([DECK_DIR]).filter((d) => !d.problem && d.dir !== DECK_DIR)
     .map((d) => path.relative(DECK_DIR, d.dir).split(path.sep).join("/")))];
   return { files, folders };
@@ -1133,7 +1133,7 @@ function deletePlan(eid) {
    HTML (relative to its own folder), or in the stylesheets beside it */
 function otherDeckRefs() {
   const own = path.join(DECK_DIR, DECK_FILE);
-  const decks = [...fs.readdirSync(DECK_DIR).filter((f) => /\.html?$/i.test(f)).map((f) => ({ dir: DECK_DIR, file: f })),
+  const decks = [...fs.readdirSync(DECK_DIR).filter((f) => /\.html$/i.test(f)).map((f) => ({ dir: DECK_DIR, file: f })),
     ...listDecks([DECK_DIR]).filter((d) => d.dir !== DECK_DIR)].filter((d) => path.join(d.dir, d.file) !== own);
   return decks.map(({ dir, file }) => {
     const read = (f) => { try { return fs.statSync(f).size <= 5e6 ? fs.readFileSync(f, "utf8") : ""; } catch { return ""; } };
@@ -1357,7 +1357,7 @@ function serveFile(res, file, transform, req, extra = {}) {
 let ready = false;
 /* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
    read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret. */
-const SCRIPTABLE = /\.(html?|xhtml|svg|xml)$/i;
+const SCRIPTABLE = /\.(html|svg|xml)$/i;
 const deckHeaders = (f, viewing) => ({ ...(SCRIPTABLE.test(f) ? { "content-security-policy": SANDBOX } : {}),
   ...(viewing ? { "access-control-allow-origin": "*" } : {}) });
 const server = http.createServer(async (req, res) => {
@@ -1411,9 +1411,9 @@ const server = http.createServer(async (req, res) => {
     if (deckPath === null) return text(res, 403, "Forbidden");
     if (deckPath) {
       const f = deckPath;
-      if (!viewing && /\.html?$/i.test(f)) return toView(p);
+      if (!viewing && /\.html$/i.test(f)) return toView(p);
       const mode = url.searchParams.get("editor");
-      if (!mode || !/\.html?$/i.test(f)) return serveFile(res, f, null, req, deckHeaders(f, viewing));
+      if (!mode || !/\.html$/i.test(f)) return serveFile(res, f, null, req, deckHeaders(f, viewing));
       return serveFile(res, f, (s) => {
         // headless runs must not stream media, or Chrome never finishes the page
         if (mode === "shot" || mode === "dump" || mode === "pdf") s = s.replace(/\bpreload="(auto|metadata)"/g, 'preload="none"');
