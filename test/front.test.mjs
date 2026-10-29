@@ -128,7 +128,21 @@ test("Front: one login for several decks, each with its own server, opened when 
   assert.deepEqual((await s.api("/api/decks")).data.decks.map((d) => d.open), [true, false, true, false]);
   // the editor page and the deck page, under the deck's own path; the bridge from the front
   assert.equal((await s.get(`/d/${key(second)}/`)).status, 200);
-  assert.match(await (await s.get(`/d/${key(second)}/deck/second.html?editor=main`)).text(), /<script src="\/editor\/bridge\.js">/);
+  // the deck page is sent to its sandboxed address, which needs no cookie (the deck has none) but gives nothing else
+  const toView = await s.get(`/d/${key(second)}/deck/second.html?editor=main`);
+  assert.equal(toView.status, 302);
+  const view = new URL(toView.headers.get("location"), `${s.url}/d/${key(second)}/deck/second.html`);
+  assert.match(view.pathname, new RegExp(`^/d/${key(second)}/v/[0-9a-f]{32}/deck/second\\.html$`));
+  const page = await fetch(view, { headers: {} });
+  assert.match(page.headers.get("content-security-policy"), /^sandbox allow-scripts /);
+  assert.match(await page.text(), /<script src="\/editor\/bridge\.js">/);
+  const viewBase = view.pathname.replace(/deck\/second\.html$/, "");
+  assert.equal((await fetch(`${s.url}${viewBase}deck/theme.css`)).status, 200, "the deck's own files");
+  for (const p of ["api/status", "api/events", "deck/../api/status", "shots/x.png"])
+    assert.notEqual((await fetch(`${s.url}${viewBase}${p}`)).status, 200, p);
+  assert.equal((await fetch(`${s.url}${viewBase.replace(/[0-9a-f]{32}/, "0".repeat(32))}deck/theme.css`)).status, 403, "a wrong token");
+  assert.equal((await fetch(`${s.url}/d/${key(second)}/api/status`)).status, 403, "the API: login needed");
+  assert.equal((await fetch(`${s.url}/d/${key(fx.talks)}/../${key(second)}/api/status`)).status, 403);
   assert.equal((await s.get("/editor/bridge.js", {})).status, 200, "the editor's scripts need no login");
   assert.equal((await s.get(`/d/${key(second)}`)).headers.get("location"), `/d/${key(second)}/`);
 

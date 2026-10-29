@@ -591,10 +591,13 @@ test("Asset root: the deck is served inside it, so ../ paths work; nothing outsi
   // the editor asks for /deck/ and is sent to the page inside the root, with its query
   const r = await fetch(`${s.url}/deck/?editor=main&x=1`, { headers: auth, redirect: "manual" });
   assert.equal(r.status, 302);
-  // relative, so it stays under the front's /d/<deck>/
-  assert.equal(r.headers.get("location"), `..${page}?editor=main&x=1`);
-  assert.equal(new URL(r.headers.get("location"), `${s.url}/d/k/deck/`).pathname, `/d/k${page}`);
-  const html = await (await fetch(`${s.url}${page}?editor=main`, { headers: auth })).text();
+  // relative, so it stays under the front's /d/<deck>/; at the deck's sandboxed address
+  const view = /^\.\.\/(v\/[0-9a-f]{32})\/files\//.exec(r.headers.get("location"))?.[1];
+  assert.ok(view, r.headers.get("location"));
+  assert.equal(r.headers.get("location"), `../${view}${page}?editor=main&x=1`);
+  assert.equal(new URL(r.headers.get("location"), `${s.url}/d/k/deck/`).pathname, `/d/k/${view}${page}`);
+  assert.equal((await fetch(`${s.url}${page}?editor=main`, { headers: auth, redirect: "manual" })).status, 302);
+  const html = await (await fetch(`${s.url}/${view}${page}?editor=main`)).text();
   assert.match(html, /<script src="\/editor\/bridge\.js"><\/script>/);
   // ../shared/extra.css from the deck page
   const css = new URL("../shared/extra.css", s.url + page).pathname;
@@ -626,7 +629,8 @@ test("Symlinks: served only when they lead into the deck or an asset root", { sk
   const s2 = await startServer(t, fx, { args: ["--port", "0", "--asset-root", library] });
   assert.equal(await get(s2, "lib.css"), 200);
   assert.equal(await get(s2, "escape.css"), 403);
-  assert.equal((await fetch(`${s2.url}/deck/`, { headers: { "x-editor-token": s2.token }, redirect: "manual" })).status, 200, "no redirect: the root does not contain the deck");
+  const r = await fetch(`${s2.url}/deck/`, { headers: { "x-editor-token": s2.token }, redirect: "manual" });
+  assert.match(r.headers.get("location"), /^\.\.\/v\/[0-9a-f]{32}\/deck\/$/, "the deck page at /deck/: the root does not contain the deck");
 });
 
 /* A stand-in for Chrome that writes a small PNG where --screenshot= says, and reports it as Chrome does */

@@ -92,6 +92,12 @@ if (LOGIN) {
   }
 }
 const TOKEN = crypto.randomBytes(16).toString("hex");
+/* The deck's pages are untrusted content: a deck (or a template, or a script the assistant wrote) must not
+   reach the API, the chat or other decks. They are served with a sandbox policy, which gives them an origin
+   of their own (no cookie, no token, no access to the editor page), under /v/<VIEW_TOKEN>/: a path that
+   lets them load their own files, and nothing else. */
+const VIEW = `/v/${crypto.randomBytes(16).toString("hex")}`;
+const SANDBOX = "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-presentation";
 let ORIGIN = `http://127.0.0.1:${PORT}`;   // set again from the bound port once listening
 const CLI_REL = path.relative(DECK_DIR, path.join(EDITOR_DIR, "cli.mjs")).split(path.sep).join("/");
 const CLI_CMD = cliCommand(CLI_REL);
@@ -327,7 +333,7 @@ function chrome(args, done) {
   });
 }
 const deckUrl = (mode, params = {}) =>
-  `${ORIGIN}${DECK_PAGE}?` + new URLSearchParams({ editor: mode, showHiddenSlides: "true", ...params });
+  `${ORIGIN}${VIEW}${DECK_PAGE}?` + new URLSearchParams({ editor: mode, showHiddenSlides: "true", ...params });
 async function takeShot(slide) {
   const pins = state.pins.filter((p) => p.slide.eid === slide.eid).map((p) => ({ n: p.n, eid: p.eid, at: p.at, point: p.point }));
   const out = path.join(SHOT_DIR, `${slide.eid.replace(/[^\w-]/g, "_")}-${Date.now()}.png`);
@@ -382,10 +388,10 @@ function exportPdf(kind, includeHidden = false) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const layoutProfile = profile("layout"), printProfile = profile("print");
     const html = await printLayout(CHROME, chromeStart(layoutProfile,
-      `${ORIGIN}${DECK_PAGE}?editor=pdf&print-pdf&pdfSeparateFragments=${split}&showHiddenSlides=${!!includeHidden}`), layoutProfile);
+      `${ORIGIN}${VIEW}${DECK_PAGE}?editor=pdf&print-pdf&pdfSeparateFragments=${split}&showHiddenSlides=${!!includeHidden}`), layoutProfile);
     const id = `${process.pid}-${++snapSeq}`;
     snapshots.set(id, html);
-    try { await printPdf(CHROME, chromeStart(printProfile, `${ORIGIN}${DECK_BASE}__pindeck-print-${id}.html`), out, printProfile); }
+    try { await printPdf(CHROME, chromeStart(printProfile, `${ORIGIN}${VIEW}${DECK_BASE}__pindeck-print-${id}.html`), out, printProfile); }
     finally { snapshots.delete(id); }
     return { kind: split ? "presentation" : "handout", path: out, rel: path.relative(DECK_DIR, out),
       url: `deck/export/${encodeURIComponent(name)}`, bytes: fs.statSync(out).size };
@@ -1166,17 +1172,17 @@ function chromeStart(profile, target) {
 
 /* Files with a length and byte ranges: Safari plays audio and video only from servers that answer a
    Range request with 206, and seeking needs it everywhere. Transformed (HTML) files are sent whole. */
-function serveFile(res, file, transform, req) {
+function serveFile(res, file, transform, req, extra = {}) {
   const type = MIME[path.extname(file).slice(1).toLowerCase()] || "application/octet-stream";
   if (transform) return fs.readFile(file, (err, data) => {
     if (err) return text(res, 404, "Not found");
     const out = Buffer.from(transform(String(data)));
-    res.writeHead(200, { "content-type": type, "content-length": out.length, "cache-control": "no-store" });
+    res.writeHead(200, { "content-type": type, "content-length": out.length, "cache-control": "no-store", ...extra });
     res.end(out);
   });
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return text(res, 404, "Not found");
-    const headers = { "content-type": type, "accept-ranges": "bytes", "cache-control": "no-store" };
+    const headers = { "content-type": type, "accept-ranges": "bytes", "cache-control": "no-store", ...extra };
     let start = 0, end = st.size - 1, code = 200;
     const range = /^bytes=(\d*)-(\d*)$/.exec(String(req?.headers.range || "").trim());   // one range only
     if (range && (range[1] || range[2])) {
@@ -1200,14 +1206,27 @@ function serveFile(res, file, transform, req) {
 }
 
 let ready = false;
+/* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
+   read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret. */
+const SCRIPTABLE = /\.(html?|xhtml|svg|xml)$/i;
+const deckHeaders = (f, viewing) => ({ ...(SCRIPTABLE.test(f) ? { "content-security-policy": SANDBOX } : {}),
+  ...(viewing ? { "access-control-allow-origin": "*" } : {}) });
 const server = http.createServer(async (req, res) => {
   if (!ready) return text(res, 503, "PinDeck is starting. Reload in a moment.");
   const host = String(req.headers.host || "").toLowerCase();
   if (!goodHost(host)) return text(res, 403, "Bad host");
-  const url = new URL(req.url, ORIGIN);
-  const p = url.pathname;
   try {
+    const url = new URL(req.url, ORIGIN);
+    let p = url.pathname;
     if (req.method === "GET" && p === "/login") return login(res, url);
+    // /v/<token>/deck/... and /v/<token>/files/...: the deck's pages and files, read-only, nothing else
+    let viewing = false;
+    if (p.startsWith("/v/")) {
+      if (!p.startsWith(VIEW + "/") || (req.method !== "GET" && req.method !== "HEAD")) return text(res, 403, "Forbidden");
+      p = p.slice(VIEW.length);
+      if (!p.startsWith("/deck/") && !p.startsWith("/files/")) return text(res, 404, "Not found");
+      viewing = true;
+    }
     // UI and deck files (read-only); the editor's own scripts and styles hold nothing secret
     const ok = authed(req);
     if (req.method === "GET" && (p === "/" || p === "/index.html")) {
@@ -1218,18 +1237,23 @@ const server = http.createServer(async (req, res) => {
       const f = safeJoin(path.join(EDITOR_DIR, "public"), p.slice(8));
       return f ? serveFile(res, f, null, req) : text(res, 403, "Forbidden");
     }
-    if ((p.startsWith("/deck/") || p.startsWith("/files/")) && !ok) return text(res, 403, "Not logged in");
+    if ((p.startsWith("/deck/") || p.startsWith("/files/")) && !ok && !viewing) return text(res, 403, "Not logged in");
     let snap;
     if (req.method === "GET" && (snap = p.match(/^\/(?:deck|files)\/(?:.*\/)?__pindeck-print-([\w-]+)\.html$/))) {
       const html = snapshots.get(snap[1]);
       if (!html) return text(res, 404, "Not found");
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...deckHeaders(".html", viewing) });
       return res.end(html);
     }
-    // /deck/: the deck folder; /deck/ alone is the deck page. With an asset root the page lives under
-    // /files/, so that ../ paths reach the root: /deck/ alone redirects there (a relative redirect, which
-    // stays under the front's /d/<deck>/).
+    // A deck page asked for outside /v/ (the editor's frames ask for deck/?editor=main, Present for deck/):
+    // sent there, with a relative redirect that stays under the front's /d/<deck>/. /deck/ alone is the deck
+    // page; with an asset root that page lives under /files/, so that ../ paths reach the root.
+    const toView = (target) => {
+      res.writeHead(302, { location: "../".repeat(p.split("/").length - 2) + VIEW.slice(1) + target + url.search, "cache-control": "no-store" });
+      res.end();
+    };
     if (req.method === "GET" && p === "/deck/" && SERVE_ROOT) {
+      if (!viewing) return toView(DECK_PAGE);
       res.writeHead(302, { location: ".." + DECK_PAGE + url.search, "cache-control": "no-store" });
       return res.end();
     }
@@ -1238,8 +1262,9 @@ const server = http.createServer(async (req, res) => {
     if (deckPath === null) return text(res, 403, "Forbidden");
     if (deckPath) {
       const f = deckPath;
+      if (!viewing && /\.html?$/i.test(f)) return toView(p);
       const mode = url.searchParams.get("editor");
-      if (!mode || !/\.html?$/i.test(f)) return serveFile(res, f, null, req);
+      if (!mode || !/\.html?$/i.test(f)) return serveFile(res, f, null, req, deckHeaders(f, viewing));
       return serveFile(res, f, (s) => {
         // headless runs must not stream media, or Chrome never finishes the page
         if (mode === "shot" || mode === "dump" || mode === "pdf") s = s.replace(/\bpreload="(auto|metadata)"/g, 'preload="none"');
@@ -1249,8 +1274,9 @@ const server = http.createServer(async (req, res) => {
           return slideSelector(parse(s)) ? s.replace(/<\/body>/i, BRIDGE_TAG) : s;
         }
         return s.replace(/<\/body>/i, BRIDGE_TAG);
-      });
+      }, req, deckHeaders(f, viewing));
     }
+    if (viewing) return text(res, 404, "Not found");
 
     // /shots/: a screenshot for the chat, a PNG directly in the screenshots folder (no subfolder, no symlink out)
     if (req.method === "GET" && p.startsWith("/shots/")) {

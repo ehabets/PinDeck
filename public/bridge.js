@@ -19,7 +19,17 @@
   const SLIDE_SEL = deckMeta("slides") || null;
   const SLIDE = SLIDE_SEL ? `:is(${SLIDE_SEL})` : ".reveal .slides section";   // in CSS and closest()
   const SLIDE_OF = SLIDE_SEL || "section";   // the slide an element is on
-  const host = () => (window.parent !== window ? window.parent.__editorHost : null);
+  /* The editor, reached by messages: the deck runs sandboxed in an origin of its own (see VIEW in server.mjs),
+     so it cannot touch the editor page. Every call answers with a promise of the editor's return value. */
+  const PARENT = window.parent !== window ? window.parent : null;
+  let callSeq = 0;
+  const answers = new Map();   // id -> resolve
+  const hostCalls = new Proxy({}, { get: (_, method) => method === "then" ? undefined : (...args) => new Promise((resolve) => {
+    const id = ++callSeq;
+    answers.set(id, resolve);
+    PARENT.postMessage({ pindeck: "host", id, method, args }, "*");
+  }) });
+  const host = () => (PARENT ? hostCalls : null);
   let W = 1280, H = 720, deck = null;   // deck: reveal.js or a selector deck (see "Decks" below)
 
   /* ---- Styles for editor-only overlays ---------------------------------------- */
@@ -128,7 +138,8 @@
       hasFooter: !!sec.querySelector(".slide-foot"), hidden };
   }
   function info() {
-    return { slides: slides().map((s, i) => slideInfo(s, i)), current: indexOf(deck.current()) };
+    // hash: the slide's address in the deck opened on its own (Present), where hidden slides are left out
+    return { slides: slides().map((s, i) => ({ ...slideInfo(s, i), hash: deck.hash(i) })), current: indexOf(deck.current()) };
   }
 
   /* ---- Layout measurement ------------------------------------------------------------- */
@@ -825,8 +836,8 @@
     teardownEdit(ed);
     host()?.editingChanged(false);
     chainDirty = true;
-    host()?.commitSplit({ eid: ed.eid, html, newHtml, newEid, cls, text: textOf(el).slice(0, 200) },
-      (real) => { if (real && real !== newEid) li.dataset.eid = real; });
+    host()?.commitSplit({ eid: ed.eid, html, newHtml, newEid, cls, text: textOf(el).slice(0, 200) })
+      .then((real) => { if (real && real !== newEid) li.dataset.eid = real; });
     startEdit({ el: li, sec: ed.sec, eid: newEid, path: [], isNew: true }, null, null, { src: newHtml, caret: "start" });
   }
 
@@ -853,7 +864,19 @@
       slides: () => Reveal.getSlides(),
       current: () => Reveal.getCurrentSlide(),
       goto(index) { if (Reveal.getSlides()[index]) { const i = ix(index); Reveal.slide(i.h, i.v); } },
-      hash(index) { const i = ix(index); return `#/${i.h}${i.v ? "/" + i.v : ""}`; },
+      // counted without hidden slides, which the deck opened on its own leaves out (the editor shows them);
+      // a hidden slide opens at the next one shown
+      hash(index) {
+        const all = Reveal.getSlides(), shown = (s) => s.getAttribute("data-visibility") !== "hidden" &&
+          s.parentElement?.closest("section")?.getAttribute("data-visibility") !== "hidden";
+        const sec = [...all.slice(index), ...all.slice(0, index).reverse()].find(shown);
+        if (!sec) return "";
+        const stack = sec.parentElement.closest("section");
+        const sections = (el) => [...el.children].filter((c) => c.tagName === "SECTION" && shown(c));
+        const h = sections(Reveal.getSlidesElement()).indexOf(stack || sec);
+        const v = stack ? sections(stack).indexOf(sec) : 0;
+        return `#/${h}${v ? "/" + v : ""}`;
+      },
       size: () => ({ width: Reveal.getConfig().width, height: Reveal.getConfig().height }),
       scale: () => Reveal.getScale() || 1,
       on: (ev, fn) => Reveal.on(ev === "slide" ? "slidechanged" : ev, fn),
@@ -1060,7 +1083,16 @@
         return measureSection(slides()[index]);
       },
     };
-    window.__editorBridge = api;
+    // the editor's calls: from the parent window only, answered with the result
+    if (PARENT) window.addEventListener("message", async (e) => {
+      const m = e.data;
+      if (e.source !== PARENT || !m || typeof m !== "object") return;
+      if (m.pindeck === "host-answer") { answers.get(m.id)?.(m.value); answers.delete(m.id); return; }
+      if (m.pindeck !== "bridge" || !Object.hasOwn(api, m.method)) return;
+      let value = null;
+      try { value = await api[m.method](...(m.args || [])); } catch (err) { console.error(err); }
+      PARENT.postMessage({ pindeck: "bridge-answer", id: m.id, value: value ?? null }, "*");
+    });
 
     if (MODE === "main") {
       document.addEventListener("pointerdown", onPointerDown, true);
@@ -1129,7 +1161,7 @@
       if (startAt) goto(startAt);
       deck.keys();
     }
-    host()?.bridgeReady(MODE, api, window);
+    host()?.bridgeReady(MODE, info());
   }
   if (SLIDE_SEL) {
     deck = selectorDeck();

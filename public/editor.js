@@ -60,19 +60,47 @@ function loadMeasure() {
   $("stage").appendChild(f);
 }
 
-window.__editorHost = {
-  bridgeReady(role, bridge, win) {
+/* The slide frames run the deck sandboxed, in an origin of their own (see VIEW in server.mjs): the editor and
+   the bridge in each frame talk by messages. A frame's bridge is a proxy whose calls answer with promises;
+   the bridge calls the methods of editorHost below. Only the editor's own frames are listened to, and a deck's
+   own script, which shares its frame with the bridge, can do no more than the bridge: hand edits to its deck. */
+let callSeq = 0;
+const answers = new Map();   // id -> resolve
+function bridgeOf(win) {
+  // not a thenable: a promise resolved with the proxy must not call it
+  return new Proxy({}, { get: (_, method) => method === "then" ? undefined : (...args) => new Promise((resolve) => {
+    const id = ++callSeq;
+    answers.set(id, resolve);
+    win.postMessage({ pindeck: "bridge", id, method, args }, "*");
+  }) });
+}
+addEventListener("message", async (e) => {
+  const m = e.data;
+  if (!m || typeof m !== "object" || !e.source) return;
+  const from = [main?.iframe, pendingMain, measure?.iframe].find((f) => f?.contentWindow === e.source);
+  if (!from) return;
+  if (m.pindeck === "bridge-answer") { answers.get(m.id)?.(m.value); answers.delete(m.id); return; }
+  if (m.pindeck !== "host" || !Object.hasOwn(editorHost, m.method)) return;
+  // only a frame that is showing may edit; a frame still loading may only say that it is ready
+  if (m.method !== "bridgeReady" && from !== main?.iframe) return;
+  let value = null;
+  try { value = await editorHost[m.method](...(Array.isArray(m.args) ? m.args : []), e.source); } catch (err) { console.error(err); }
+  e.source.postMessage({ pindeck: "host-answer", id: m.id, value: value ?? null }, "*");
+});
+
+const editorHost = {
+  bridgeReady(role, inf, win) {
     if (role === "measure") {
-      if (measure && measure.iframe.contentWindow === win) { measure.bridge = bridge; measureResolve(bridge); }
+      if (measure && measure.iframe.contentWindow === win) { measure.bridge = bridgeOf(win); measureResolve(measure.bridge); }
       return;
     }
     if (!pendingMain || pendingMain.contentWindow !== win) return;
     const old = main;
+    const bridge = bridgeOf(win);
     main = { iframe: pendingMain, bridge };
     pendingMain = null;
     main.iframe.classList.remove("loading");
     old?.iframe.remove();
-    const inf = bridge.info();
     state.slides = inf.slides;
     state.current = Math.min(state.current, state.slides.length - 1);
     if (inf.current !== state.current) bridge.goto(state.current);
@@ -125,13 +153,14 @@ window.__editorHost = {
       loadMain();   // re-render: math, footer numbers, and the file as saved
     }, "Could not save the text.");
   },
-  commitSplit(op, done) {
-    queueEdit(async () => {
+  commitSplit(op) {   // answers with the new bullet's id as saved (null if it was not)
+    let eid = null;
+    return queueEdit(async () => {
       const res = await api("split", op);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { toast(d.error || "Could not add the bullet."); loadMain(); return; }
-      done?.(d.eid);
-    }, "Could not add the bullet.");
+      eid = d.eid;
+    }, "Could not add the bullet.").then(() => eid);
   },
   commitRemove(eid) {
     queueEdit(async () => {
@@ -523,7 +552,7 @@ $("export-menu").addEventListener("click", async (e) => {
 });
 
 $("present").onclick = () => {
-  window.open(`${BASE}deck/${main?.bridge.presentHash(state.current) || ""}`, "_blank");
+  window.open(`${BASE}deck/${state.slides[state.current]?.hash || ""}`, "_blank");
 };
 
 /* ---- Pins --------------------------------------------------------------------------------------- */
@@ -565,7 +594,7 @@ function renderPinTray() {
 }
 $("pin-tray").addEventListener("click", (e) => {
   const x = e.target.closest("[data-x]");
-  if (x) return window.__editorHost.removePin(+x.dataset.x);
+  if (x) return editorHost.removePin(+x.dataset.x);
   if (e.target.closest("[data-unsel]")) return main?.bridge.deselect();
   if (e.target.closest("[data-sel]")) return main?.bridge.highlight(state.sel.eid);
   const chip = e.target.closest(".chip");
@@ -771,7 +800,10 @@ function handleKey(k, mod = {}) {
   else if (k === "v" || k === "V") setMode("select");
   else if (k === "h" || k === "H") toggleHidden();
   else if (k === "Escape") { if (state.mode === "pin") setMode("select"); else main?.bridge.deselect(); }
-  else if (k === "Enter") { if (!(state.sel && state.mode === "select" && main?.bridge.editSelection())) $("input").focus(); }
+  else if (k === "Enter") {
+    if (!(state.sel && state.mode === "select" && main)) $("input").focus();
+    else main.bridge.editSelection().then((editing) => { if (!editing) $("input").focus(); });
+  }
   else if ((k === "Delete" || k === "Backspace") && state.sel && state.mode === "select") requestDelete(state.sel.eid);
   else if (k.startsWith("Arrow") && state.sel && state.mode === "select") {
     const step = mod.shift ? 10 : 1;

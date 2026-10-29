@@ -156,9 +156,10 @@ setInterval(async () => {
 
 /* The request, without the front's cookie and with the deck's token, to the deck's server; the answer
    streamed back (event streams, media ranges and large uploads included) */
-function proxy(req, res, d, rest) {
+function proxy(req, res, d, rest, anonymous = false) {
   d.last = Date.now();
-  const headers = { ...req.headers, host: new URL(d.url).host, "x-editor-token": d.token };
+  const headers = { ...req.headers, host: new URL(d.url).host, ...(anonymous ? {} : { "x-editor-token": d.token }) };
+  if (anonymous) delete headers["x-editor-token"];
   delete headers.cookie;
   delete headers.origin;   // checked here against the front's address; the deck server checks its own
   const up = http.request(d.url + rest, { method: req.method, headers }, (r) => {
@@ -210,12 +211,21 @@ function serveEditorFile(res, rel) {
 const server = http.createServer(async (req, res) => {
   const host = String(req.headers.host || "").toLowerCase();
   if (!goodHost(host)) return text(res, 403, "Bad host");
-  const url = new URL(req.url, ORIGIN);
-  const p = url.pathname;
   try {
+    const url = new URL(req.url, ORIGIN);
+    const p = url.pathname;
     if (req.method === "GET" && p === "/login") return login(res, url);
     // the editor's own scripts and styles hold nothing secret; the deck page loads bridge.js from here
     if (req.method === "GET" && p.startsWith("/editor/")) return serveEditorFile(res, p.slice(8));
+    /* A deck's pages and files under /d/<deck>/v/<token>/: asked for by the deck itself, which runs sandboxed
+       without the login cookie (see VIEW in server.mjs). Passed on without the token, so the deck server's own
+       check of the path is all they get; only to a deck that is open, so they never start one. */
+    const view = /^\/d\/([\w.-]+)(\/v\/.*)$/.exec(p);
+    if (view && !authed(req)) {
+      const d = decks.get(view[1]);
+      if (!d?.url || (req.method !== "GET" && req.method !== "HEAD")) return text(res, 403, "Not logged in");
+      return proxy(req, res, d, view[2] + url.search, true);
+    }
     if (!authed(req)) {
       if (req.method === "GET" && /^\/(d\/[^/]+\/(index\.html)?)?$/.test(p)) {
         res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
