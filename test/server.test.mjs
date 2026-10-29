@@ -714,6 +714,25 @@ test("A screenshot shows the pins its message carries: none after a reload, neve
   assert.ok(!fakeLog(fx).some((e) => e.type === "user" && /stop me/.test(e.text)));
 });
 
+test("Headless Chrome's page: without the sandbox only with its one-time key; no login, so no API", async (t) => {
+  const fx = fixture(t);
+  const chromeLog = path.join(fx.root, "chrome.log"), chrome = path.join(fx.root, "chrome-start");
+  // a Chrome that only notes its start page and writes a PNG
+  fs.writeFileSync(chrome, `#!/bin/sh\nfor a; do case "$a" in --screenshot=*) out="\${a#--screenshot=}";; file:*) echo "$a" >> "${chromeLog}";; esac; done\n` +
+    `printf '\\211PNG\\r\\n\\032\\n' > "$out"\necho "8 bytes written to file $out" >&2\n`, { mode: 0o755 });
+  const s = await startServer(t, fx, { env: { CHROME_BIN: chrome } });
+  assert.equal((await s.api("shot?slide=1")).status, 200);
+  const start = fs.readFileSync(fileURLToPath(fs.readFileSync(chromeLog, "utf8").trim()), "utf8");
+  assert.doesNotMatch(start, /login\?code=/, "no login");
+  const target = /url=([^"]+)"/.exec(start)[1].replace(/&amp;/g, "&");
+  const first = await fetch(target);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("content-security-policy"), null, "the key's one request: no sandbox");
+  assert.match((await fetch(target)).headers.get("content-security-policy"), /^sandbox /, "used: sandboxed again");
+  assert.match((await fetch(target.replace(/headless=[0-9a-f]+/, "headless=" + "0".repeat(32)))).headers.get("content-security-policy"), /^sandbox /);
+  assert.equal((await fetch(new URL("/api/status", target))).status, 403, "without the login, no API");
+});
+
 test("A Chrome that fails gives its own reason", async (t) => {
   const fx = fixture(t);
   const chrome = path.join(fx.root, "chrome-fails");

@@ -462,7 +462,9 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * **Deck pages are sandboxed.** The deck page (in the editor's frames, and in Present) runs with a sandbox
   policy in an origin of its own, at a per-run address that serves the deck's files and nothing else. A
   script in a deck, a template, or written by the assistant cannot reach the login cookie, the API, the
-  chat or other decks. The editor and its bridge in the slide frame talk by `postMessage`.
+  chat or other decks. The editor and its bridge in the slide frame talk by `postMessage`. Headless Chrome
+  (screenshots, layout, PDFs) does not log in at all; the page it asks for is served without the sandbox,
+  which its screenshot and print modes cannot handle, only with a key made for that one run.
 * **Element ids.** On start, the server gives every slide and every visible element a readable
   `data-eid` attribute (`summary`, `summary/callout`, `summary/li-2`). Only the attribute is
   inserted; the rest of the file stays as it was. A backup of the file before the first change is
