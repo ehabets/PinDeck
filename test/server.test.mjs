@@ -738,6 +738,39 @@ test("A named deck file: served, edited, given ids and permissions, with state o
   assert.ok(out.includes(`:${s.port}/login?code=`), "login for the named deck reaches its server");
 });
 
+test("Decks in one folder: a turn leaves out the other decks, and what another deck's assistant wrote meanwhile", async (t) => {
+  const fx = fixture(t);
+  const talk = path.join(fx.deck, "talk.html");
+  fs.copyFileSync(path.join(fx.deck, "index.html"), talk);
+  fs.cpSync(path.join(fx.deck, "index.html"), path.join(fx.deck, "lecture", "index.html"), { recursive: true });
+  fs.writeFileSync(path.join(fx.deck, "lecture", "theme.css"), "/* lecture */\n");
+  const a = await startServer(t, fx), b = await startServer(t, fx, { deck: talk });
+  const chat = (part) => {
+    const dir = fs.readdirSync(path.join(fx.home, "decks")).find((d) => part.test(d));
+    try { return JSON.parse(fs.readFileSync(path.join(fx.home, "decks", dir, "chat.json"), "utf8")).chat; } catch { return []; }
+  };
+  const turnOf = (part) => waitFor(() => chat(part).find((e) => e.kind === "turn"), "the turn entry");
+  // a subfolder that holds a deck of its own belongs to that deck: locked for the assistant, not in undo
+  const start = await waitFor(() => claudeStart(fx), "claude to start");
+  assert.ok(denied(start.argv).includes("Edit(./lecture/**)"), denied(start.argv).join(" "));
+
+  // A's turn runs longer; B's assistant writes a file of the shared folder meanwhile
+  assert.equal((await a.api("message", { text: "fake-op append notes-A.txt fake-op append lecture/theme.css fake-wait 1500" })).status, 200);
+  await waitFor(() => fs.existsSync(path.join(fx.deck, "notes-A.txt")), "A's write");
+  assert.equal((await b.api("message", { text: "fake-op append notes-B.txt" })).status, 200);
+  const tb = await turnOf(/talk/);
+  assert.deepEqual(tb.files.map((f) => f.file), ["notes-B.txt"], "B: its own write only (A's was there before B began)");
+  const ta = await turnOf(/^[^-]+-[0-9a-f]{8}$/);
+  assert.deepEqual(ta.files.map((f) => f.file), ["notes-A.txt"], "A: neither B's file nor the lecture deck's");
+  assert.ok(chat(/^[^-]+-[0-9a-f]{8}$/).some((e) => e.kind === "notice" && /notes-B\.txt changed during this turn while the assistant of talk\.html/.test(e.text)));
+  // A's undo leaves B's work alone; B can still undo its own
+  assert.equal((await a.api("undo", {})).status, 200);
+  assert.equal(fs.existsSync(path.join(fx.deck, "notes-A.txt")), false);
+  assert.equal(fs.existsSync(path.join(fx.deck, "notes-B.txt")), true);
+  assert.equal((await b.api("undo", {})).status, 200);
+  assert.equal(fs.existsSync(path.join(fx.deck, "notes-B.txt")), false);
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);

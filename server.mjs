@@ -40,6 +40,7 @@ import { unsupportedMessage } from "./lib/frameworks.mjs";
 import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
 import { deckTarget, homeDir } from "./lib/deck-target.mjs";
+import { listDecks } from "./lib/deck-list.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
@@ -178,6 +179,7 @@ function writeDeck(f, content, manual = false) {
 }
 /* Other files PinDeck writes into the deck (uploads, imported pictures, undo/redo of deleted files) */
 function writeDeckFile(rel, data, manual = true) {
+  state.turn?.touched.add(rel);
   const abs = path.join(DECK_DIR, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   ourWrites.set(rel, { hash: hash(data.toString("utf8")), manual });   // manual: no slide reload for a new file
@@ -515,9 +517,50 @@ function slidesInstructions() {
    git's own files, and other decks in this folder (a named deck shares its folder with them). Deny rules
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
 function lockedPaths() {
-  let others = [];
-  try { others = fs.readdirSync(DECK_DIR).filter((f) => /\.html?$/i.test(f) && f !== DECK_FILE); } catch {}
-  return [...LOCKED, "vendor/**", ".git/**", ...others];
+  const { files, folders } = otherDecks();
+  return [...LOCKED, "vendor/**", ".git/**", ...files, ...folders.map((f) => `${f}/**`)];
+}
+/* The other decks in this deck's folder: its other .html files, and the subfolders that hold a deck of their
+   own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */
+function otherDecks() {
+  let files = [];
+  try { files = fs.readdirSync(DECK_DIR).filter((f) => /\.html?$/i.test(f) && f !== DECK_FILE); } catch {}
+  const folders = [...new Set(listDecks([DECK_DIR]).filter((d) => !d.problem && d.dir !== DECK_DIR)
+    .map((d) => path.relative(DECK_DIR, d.dir).split(path.sep).join("/")))];
+  return { files, folders };
+}
+const scanDeck = () => { const { files, folders } = otherDecks(); return scanFiles(DECK_DIR, { skip: [...files, ...folders] }); };
+
+/* Decks that share a folder share its files (theme.css, figures/): while the assistant of one works, that of
+   another may change them too. Each deck server keeps the times of its turns in a file of its own under
+   turns/<folder>/; a turn that overlapped another deck's keeps only the files its own assistant said it wrote. */
+const TURNS_DIR = path.join(HOME_DIR, "turns", hash(DECK_DIR).slice(0, 12));
+const TURNS_FILE = path.join(TURNS_DIR, `${deckKey}.json`);
+let turnTimes = [];   // [{ start, end }] of this deck's recent turns
+function logTurnTime(t) {
+  const now = Date.now();
+  turnTimes = turnTimes.filter((x) => x === t || (x.end ?? now) > now - 3600000).slice(-20);
+  if (!turnTimes.includes(t)) turnTimes.push(t);
+  try {
+    fs.mkdirSync(TURNS_DIR, { recursive: true, mode: 0o700 });
+    writeAtomic(TURNS_FILE, JSON.stringify({ deck: DECK_FILE === "index.html" ? path.basename(DECK_DIR) : DECK_FILE, pid: process.pid, turns: turnTimes }));
+  } catch (e) { console.error(e.message); }
+}
+/* The other decks whose assistant worked in this folder at some time since start: their names */
+function othersWorkedSince(start) {
+  const now = Date.now(), names = [];
+  let files = [];
+  try { files = fs.readdirSync(TURNS_DIR).filter((f) => f.endsWith(".json") && f !== `${deckKey}.json`); } catch {}
+  for (const f of files) {
+    try {
+      const o = JSON.parse(fs.readFileSync(path.join(TURNS_DIR, f), "utf8"));
+      let alive = true;
+      try { process.kill(o.pid, 0); } catch (e) { alive = e.code === "EPERM"; }
+      // a turn still open in a server that is gone ended when that server did, at the latest
+      if (o.turns.some((x) => (x.end ?? (alive ? now : x.start)) >= start)) names.push(o.deck);
+    } catch {}
+  }
+  return names;
 }
 /* Claude Code loads no settings files (--setting-sources ""): an allow rule in the user's, the deck's
    or a parent repo's settings would let Claude run more than PinDeck grants (and the user's hooks and
@@ -682,6 +725,15 @@ function toolSummary(name, input = {}) {
   }
 }
 const toolEntries = new Map(); // tool_use_id -> entry
+// the tools that write a file, and the argument that names it (Claude's, then those of PinDeck's Codex bridge)
+const WRITES = { Edit: "file_path", MultiEdit: "file_path", Write: "file_path", NotebookEdit: "notebook_path",
+  pindeck_edit: "path", pindeck_write: "path" };
+const DECK_REAL = realOr(DECK_DIR);
+const deckRel = (p) => {
+  const abs = path.resolve(DECK_DIR, p);
+  const rel = path.relative(abs.startsWith(DECK_REAL + path.sep) ? DECK_REAL : DECK_DIR, abs);
+  return rel.split(path.sep).join("/");
+};
 function handleEvent(ev) {
   if (ev.type === "system" && ev.subtype === "init") {
     state.model = ev.model || state.model;
@@ -691,7 +743,11 @@ function handleEvent(ev) {
   } else if (ev.type === "assistant" && state.turn) {
     for (const b of ev.message?.content || []) {
       if (b.type === "text" && b.text.trim()) addEntry({ kind: "assistant", text: b.text.trim() });
-      if (b.type === "tool_use") toolEntries.set(b.id, addEntry({ kind: "tool", ...toolSummary(b.name, b.input) }));
+      if (b.type === "tool_use") {
+        toolEntries.set(b.id, addEntry({ kind: "tool", ...toolSummary(b.name, b.input) }));
+        const file = WRITES[b.name] && b.input?.[WRITES[b.name]];
+        if (typeof file === "string") state.turn.touched.add(deckRel(file));
+      }
     }
   } else if (ev.type === "user" && state.turn) {
     for (const b of ev.message?.content || []) {
@@ -713,7 +769,9 @@ function handleEvent(ev) {
 function startTurn(promptText, userEntry) {
   // every deck file as it is now: the assistant may change any of them (not brand.css or vendor/), and undo
   // takes back all it changed
-  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), scan: scanFiles(DECK_DIR) };
+  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), scan: scanDeck(), touched: new Set(),
+    time: { start: Date.now(), end: null } };
+  logTurnTime(state.turn.time);
   state.busy = true;
   pushStatus();
   const turn = state.turn;
@@ -742,7 +800,15 @@ function finishTurn({ error, cost, duration, denials = [] }) {
   }
   toolEntries.clear();
   const eid = runEidPass();
-  const { changed, tooLarge } = scanChanges(turn.scan, scanFiles(DECK_DIR));
+  const found = scanChanges(turn.scan, scanDeck());
+  // another deck's assistant worked in this folder meanwhile: only what this one wrote (and its deck file)
+  const others = othersWorkedSince(turn.time.start);
+  turn.time.end = Date.now();
+  logTurnTime(turn.time);
+  const ours = (rel) => !others.length || rel === DECK_FILE || turn.touched.has(rel);
+  const changed = Object.fromEntries(Object.entries(found.changed).filter(([rel]) => ours(rel)));
+  const tooLarge = found.tooLarge.filter(ours);
+  const notOurs = [...Object.keys(found.changed), ...found.tooLarge].filter((rel) => !ours(rel));
   const before = {}, after = {};
   for (const [rel, c] of Object.entries(changed)) { before[rel] = c.before; after[rel] = c.after; }
   // the deck file and theme.css first, then the rest by name
@@ -763,6 +829,9 @@ function finishTurn({ error, cost, duration, denials = [] }) {
   addEntry({ kind: "turn", turnId: files.length ? t.id : null, files, error, cost, duration,
     denials, restored, newIds: eid.assigned.length });
   if (deletedFiles.length) addEntry({ kind: "notice", text: `Removed ${deletedFiles.map((f) => f.rel).join(", ")}: replaced, and no longer used.` });
+  if (notOurs.length) addEntry({ kind: "notice", text: `${notOurs.join(", ")} changed during this turn while the assistant of ` +
+    `${others.join(", ")} was working in this folder too, and the assistant here did not say it wrote ${notOurs.length > 1 ? "them" : "it"}: ` +
+    `not part of this change (Undo leaves ${notOurs.length > 1 ? "them" : "it"} as ${notOurs.length > 1 ? "they are" : "it is"}).` });
   if (tooLarge.length) addEntry({ kind: "notice", text: `${tooLarge.join(", ")} changed in this turn but ${tooLarge.length > 1 ? "are" : "is"} ` +
     `too large to keep a copy of (over 2 MB): Undo leaves ${tooLarge.length > 1 ? "them" : "it"} as ${tooLarge.length > 1 ? "they are" : "it is"}.` });
   pushStatus();
