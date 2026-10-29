@@ -64,6 +64,16 @@ jobs:
         run: |
           uname -srm && node --version && git --version
           echo "Chrome for tests: ${PINDECK_TEST_CHROME:-none}"
+      # Chrome's first start on a fresh runner builds its caches (fonts, among others) and can take longer than
+      # PinDeck's 25 s for a screenshot: the first real-Chrome test's screenshot then failed now and then
+      # (on main too). One start beforehand, with time to spare.
+      - name: Warm up Chrome
+        if: env.PINDECK_TEST_CHROME != ''
+        run: |
+          profile="$(mktemp -d)"
+          timeout 120 "$PINDECK_TEST_CHROME" --headless=new --disable-gpu --disable-field-trial-config --no-first-run \
+            --user-data-dir="$profile" --dump-dom 'data:text/html,<p>ready</p>' > /dev/null 2>&1 || echo "::warning::Chrome warm-up did not finish"
+          rm -rf "$profile"
       # each failing test also becomes an annotation (its name and error), shown on the run's page and in
       # pull requests without opening the log (.github/tap-annotations.mjs)
       - name: Tests (details printed with each failure; a stuck test fails after 5 minutes)
