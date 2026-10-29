@@ -68,6 +68,7 @@ jobs:
       # pull requests without opening the log
       - name: Tests (details printed with each failure; a stuck test fails after 5 minutes)
         run: |
+          set -o pipefail   # the tests' exit status, not tee's
           node --test --test-reporter=tap --test-timeout=300000 2>&1 | tee tap.txt || {
             node -e '
               const lines = require("fs").readFileSync("tap.txt", "utf8").split("\n");
