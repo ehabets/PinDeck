@@ -574,7 +574,6 @@ function pinsChanged() {
   main?.bridge.renderPins(state.pins);
   renderPinTray();
   renderSlides();
-  api("pins", { pins: state.pins });
 }
 function shortEid(p) {
   if (p.tag?.startsWith("footer")) return "footer";
@@ -763,7 +762,15 @@ async function send() {
         ({ path, kind, name, bytes, width, height, duration, sampleRate, channels, waveform, pages, pageSize, droppedAt })),
       current: s ? { index: state.current, eid: s.eid } : null,
     });
-    if (!res.ok) { alert((await res.json()).error || "Could not send."); return; }
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      let d = null;
+      try { d = JSON.parse(raw); } catch {}
+      const why = d?.error || (/too large/i.test(raw) ? "The message is too large to send (the limit is 5 MB)." : `Could not send the message (${res.status}).`);
+      // a missing backend needs the user's attention; the rest is said in passing, the message stays in the box
+      if (d?.code?.endsWith("-unavailable")) alert(why); else toast(why, { ms: 8000 });
+      return;
+    }
     $("input").value = "";
     autosize();
     state.shot = null;
@@ -776,7 +783,7 @@ async function send() {
   }
 }
 $("send").onclick = send;
-$("stop").onclick = () => api("stop", {});
+$("stop").onclick = () => { $("working-text").textContent = "Stopping…"; api("stop", {}); };
 $("new-chat").onclick = async () => {
   if (!confirm("Start a new conversation? The assistant forgets this chat; your slides stay as they are.")) return;
   await api("new-chat", {});
@@ -843,7 +850,7 @@ function applyStatus(s) {
   renderEffortMenu();
   $("new-chat").disabled = !!s.busy;
   $("stop").hidden = !s.busy || !!s.switching;
-  $("working-text").textContent = s.switching ? "Updating model…" : "The assistant is working…";
+  $("working-text").textContent = s.switching ? "Updating model…" : s.preparing ? "Taking the screenshot…" : "The assistant is working…";
   $("conn").classList.toggle("on", !!s.running);
   $("conn").title = s.running ? "The selected backend is running" : "The selected backend starts with the next message";
   // only the selected backend's availability matters: Codex missing is no news to someone using Claude

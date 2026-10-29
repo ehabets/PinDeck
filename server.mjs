@@ -308,7 +308,7 @@ function sized(url, size) {
   u.searchParams.set("height", size.height);
   return u.href;
 }
-function chrome(args, done) {
+function chrome(args, done, signal) {
   if (!CHROME) return Promise.reject(new Error(`Screenshots are not available: ${CAPS.screenshot.reason}.`));
   return new Promise((resolve, reject) => {
     // a profile per run: concurrent runs must not share one
@@ -334,15 +334,19 @@ function chrome(args, done) {
     // "close", not "exit": at exit Chrome's last output (the line saying the file is written) may still be unread
     proc.on("close", () => (done(out, err) ? finish(resolve, out) : finish(reject, new Error("Chrome exited without output."))));
     const timer = setTimeout(() => finish(reject, new Error("Chrome timed out.")), 25000);
+    signal?.addEventListener("abort", () => finish(reject, new Error("Stopped.")), { once: true });
   });
 }
 const deckUrl = (mode, params = {}) =>
   `${ORIGIN}${VIEW}${DECK_PAGE}?` + new URLSearchParams({ editor: mode, showHiddenSlides: "true", ...params });
-async function takeShot(slide) {
-  const pins = state.pins.filter((p) => p.slide.eid === slide.eid).map((p) => ({ n: p.n, eid: p.eid, at: p.at, point: p.point }));
+/* A screenshot of a slide with the pins of a message on it: those the message carries when the user asks for
+   one, those of the latest message when the assistant does (cli.mjs shot). Never pins the editor no longer
+   shows, or another tab's. */
+async function takeShot(slide, pins = state.lastPins, signal) {
+  pins = pins.filter((p) => p.slide?.eid === slide.eid).map((p) => ({ n: p.n, eid: p.eid, at: p.at, point: p.point }));
   const out = path.join(SHOT_DIR, `${slide.eid.replace(/[^\w-]/g, "_")}-${Date.now()}.png`);
   await chrome([`--screenshot=${out}`, deckUrl("shot", { slide: slide.eid, pins: JSON.stringify(pins) })],
-    (_o, err) => /bytes written to file/.test(err) && fs.existsSync(out));
+    (_o, err) => /bytes written to file/.test(err) && fs.existsSync(out), signal);
   if (!fs.existsSync(out)) throw new Error("Chrome did not write the screenshot.");
   // keep the folder small
   const old = fs.readdirSync(SHOT_DIR).map((f) => path.join(SHOT_DIR, f))
@@ -409,7 +413,7 @@ function exportPdf(kind, includeHidden = false) {
 const CHAT_FILE = path.join(STATE_DIR, "chat.json");
 const state = {
   chat: [], seq: 0, busy: false, model: MODEL || null, switching: false, preparing: null, sessionId: null, provider: "claude", handover: "", sessionArchive: [],
-  turns: [], redo: [], turn: null, notes: [], pins: [], current: null,
+  turns: [], redo: [], turn: null, notes: [], lastPins: [], current: null,
   uploads: new Set(),   // files uploaded for the next message; removable until it is sent
   pdfFigures: new Set(),   // figures/ files written by pdf-figure, which it may overwrite
 };
@@ -514,7 +518,7 @@ function servable(base, rel) {
 
 let catalog = { claude: { models: [] }, codex: { models: [] } }, discovering = null;
 let session = null, starting = null;
-const status = () => ({ busy: state.busy, switching: state.switching, model: state.model, sessionId: state.sessionId, settings: { ...settings },
+const status = () => ({ busy: state.busy, switching: state.switching, preparing: !!state.preparing, model: state.model, sessionId: state.sessionId, settings: { ...settings },
   running: !!session?.running, provider: settings.provider, models: catalog, deck: DECK_DIR, deckFile: DECK_FILE,
   chrome: CAPS.screenshot.available, slideSelector: deckNow.selector, deckProblem: deckNow.problem,
   capabilities: publicCapabilities(CAPS), rev: deckRev(),
@@ -929,7 +933,7 @@ function formatAttachment(a) {
 const formatDrop = (a) => (a.droppedAt?.slide ? ` Dropped onto slide ${a.droppedAt.slide.index + 1} (${a.droppedAt.slide.eid}) at ` +
   `x=${a.droppedAt.point.x} y=${a.droppedAt.point.y}${a.droppedAt.eid ? `, over ${a.droppedAt.eid}` : ""}: probably where the user wants it.` : "");
 
-function buildPrompt({ text: userText, pins = [], selection, layouts = [], current, screenshot, attachments = [] }) {
+function buildPrompt({ text: userText, pins = [], selection, layouts = [], current, screenshot, shotFailed, attachments = [] }) {
   const ctx = [];
   if (current) ctx.push(`The user is looking at slide ${current.index + 1} (${current.eid}).`);
   if (state.notes.length) {
@@ -942,7 +946,9 @@ function buildPrompt({ text: userText, pins = [], selection, layouts = [], curre
     `box x=${selection.box.x} y=${selection.box.y} w=${selection.box.w} h=${selection.box.h} on slide ${selection.slide.index + 1}.`);
   if (pins.length) ctx.push("Pins (numbered clicks; the user refers to them by number):\n" + pins.map(formatPin).join("\n"));
   for (const L of layouts) ctx.push("Layout:\n" + formatLayout(L));
-  if (screenshot) ctx.push(`Screenshot of slide ${screenshot.slide} with the pin markers: ${screenshot.path} (Read it).`);
+  if (screenshot) ctx.push(`Screenshot of slide ${screenshot.slide}${screenshot.pins ? " with the pin markers" : ""}: ${screenshot.path} (Read it).`);
+  if (shotFailed) ctx.push(`The user asked for a screenshot of slide ${shotFailed.slide}, but it could not be taken (${shotFailed.error}). ` +
+    `Take one with \`${CLI_CMD} shot ${shotFailed.slide}\` if you need to see the slide.`);
   if (attachments.length) ctx.push("Attached files (the user added them to this message; they are saved in the deck folder, " +
     `use these paths relative to ${DECK_FILE}):\n` + attachments.map((a) => formatAttachment(a) + formatDrop(a)).join("\n"));
   return (ctx.length ? `<editor-context>\n${ctx.join("\n\n")}\n</editor-context>\n\n` : "") + userText;
@@ -1446,7 +1452,6 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/login-link") return json(res, 200, { url: loginUrl(loginCode(3600000)) });
     if (p === "/api/status") return json(res, 200, status());
     if (p === "/api/current" && req.method === "POST") { state.current = await body(req); return json(res, 200, {}); }
-    if (p === "/api/pins" && req.method === "POST") { state.pins = (await body(req)).pins || []; return json(res, 200, {}); }
     if (p === "/api/measure-result" && req.method === "POST") {
       const b = await body(req);
       const w = pending.get(b.id);
@@ -1468,27 +1473,34 @@ const server = http.createServer(async (req, res) => {
       if (!placed(b.selection)) b.selection = null;
       if (!Array.isArray(b.layouts)) b.layouts = [];
       if (b.current && !Number.isInteger(b.current.index)) b.current = null;
-      const preparation = { cancelled: false };
+      const preparation = { cancelled: false, controller: new AbortController() };
       state.preparing = preparation;
       state.busy = true; pushStatus();
       try {
-        let screenshot = null;
+        let screenshot = null, shotFailed = null;
         const shotSlide = typeof b.screenshot === "object" && b.screenshot?.eid ? b.screenshot : b.screenshot ? b.current : null;
         if (shotSlide) {
-          try { screenshot = { slide: shotSlide.index + 1, path: await takeShot(shotSlide) }; }
-          catch (e) { addEntry({ kind: "notice", text: "Screenshot failed: " + e.message }); }
+          const pins = b.pins.filter((p) => p.slide.eid === shotSlide.eid);
+          try { screenshot = { slide: shotSlide.index + 1, pins: pins.length, path: await takeShot(shotSlide, pins, preparation.controller.signal) }; }
+          catch (e) { shotFailed = { slide: shotSlide.index + 1, error: e.message }; }
         }
-        if (preparation.cancelled) return json(res, 409, { error: "Stopped before sending the message." });
+        if (preparation.cancelled) {
+          if (screenshot) fs.rmSync(screenshot.path, { force: true });
+          return json(res, 409, { code: "stopped", error: "Stopped before sending the message." });
+        }
         const label = (p) => (p.tag?.startsWith("footer") ? "footer" : p.eid === p.slide.eid ? "slide" : p.eid.replace(/^[^/]+\//, ""));
         // only files PinDeck itself stored can be attached
         b.attachments = (b.attachments || []).filter((a) => a && state.uploads.has(a.path) && fs.existsSync(uploadFile(a.path)));
         b.attachments.forEach((a) => { state.uploads.delete(a.path); if (a.waveform) state.uploads.delete(a.waveform); });
+        state.lastPins = b.pins;
+        state.preparing = null;
         const entry = addEntry({ kind: "user", text: b.text,
           screenshot: screenshot && { file: path.basename(screenshot.path), slide: screenshot.slide },
           attachments: b.attachments.map((a) => ({ path: a.path, kind: a.kind, name: a.name })),
           selection: b.selection ? { eid: b.selection.eid, label: b.selection.eid.replace(/^[^/]+\//, ""), slide: b.selection.slide.index + 1 } : null,
           pins: (b.pins || []).map((p) => ({ n: p.n, eid: p.eid, label: label(p), slide: p.slide.index + 1 })) });
-        startTurn(buildPrompt({ ...b, screenshot }), entry);
+        if (shotFailed) addEntry({ kind: "notice", text: `Screenshot of slide ${shotFailed.slide} failed: ${shotFailed.error}` });
+        startTurn(buildPrompt({ ...b, screenshot, shotFailed }), entry);
         return json(res, 200, { id: entry.id });
       } finally { state.preparing = null; if (!state.turn) { state.busy = false; pushStatus(); } }
     }
@@ -1619,7 +1631,7 @@ const server = http.createServer(async (req, res) => {
       catch (e) { console.error(e); return json(res, 500, { error: String(e.message || e) }); }
     }
     if (p === "/api/stop" && req.method === "POST") {
-      if (state.preparing) { state.preparing.cancelled = true; return json(res, 200, {}); }
+      if (state.preparing) { state.preparing.cancelled = true; state.preparing.controller.abort(); return json(res, 200, {}); }
       if (state.busy && state.turn) {
         const interruptedTurn = state.turn;
         interruptedTurn.cancelled = true;
@@ -1814,9 +1826,11 @@ const server = http.createServer(async (req, res) => {
     return text(res, 404, "Not found");
   } catch (e) {
     // malformed JSON or %-encoding in a request is the caller's mistake, not a server error
-    const bad = e instanceof SyntaxError || e instanceof URIError || e.message === "body too large";
+    const large = e.message === "body too large", bad = large || e instanceof SyntaxError || e instanceof URIError;
     if (!bad) console.error(e);
-    if (!res.headersSent) text(res, bad ? 400 : 500, String(e.message || e));
+    // the rest of a body too large is not read: the connection is not used again
+    if (large && !res.headersSent) res.setHeader("connection", "close");
+    if (!res.headersSent) text(res, large ? 413 : bad ? 400 : 500, String(e.message || e));
   }
 });
 

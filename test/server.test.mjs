@@ -676,6 +676,69 @@ test("A message's screenshot and Claude's Read of it name the picture; the edito
   assert.equal((await fetch(`${s.url}/shots/${user.screenshot.file}`, { headers: { "x-editor-token": s.token } })).status, 200);
 });
 
+test("A screenshot shows the pins its message carries: none after a reload, never another tab's", async (t) => {
+  const fx = fixture(t);
+  // a Chrome that also notes the page it was asked for, and with "slow" in it, takes its time
+  const chromeLog = path.join(fx.root, "chrome.log"), chrome = path.join(fx.root, "chrome-logging");
+  fs.writeFileSync(chrome, `#!/bin/sh\nfor a; do case "$a" in --screenshot=*) out="\${a#--screenshot=}";; file:*) echo "$a" >> "${chromeLog}";; esac; done\n` +
+    `[ -f "${path.join(fx.root, "slow")}" ] && sleep 10\nprintf '\\211PNG\\r\\n\\032\\n' > "$out"\necho "8 bytes written to file $out" >&2\n`, { mode: 0o755 });
+  const s = await startServer(t, fx, { env: { CHROME_BIN: chrome } });
+  const eid = firstSlideEid(fx.deck), slide = { index: 0, eid };
+  // the page Chrome opened: its start page names the target, with the pins drawn
+  const pinsDrawn = () => {
+    const start = fileURLToPath(fs.readFileSync(chromeLog, "utf8").trim().split("\n").at(-1));
+    const login = new URL(/url=([^"]+)"/.exec(fs.readFileSync(start, "utf8"))[1].replace(/&amp;/g, "&"));
+    return JSON.parse(new URL(login.searchParams.get("next"), s.url).searchParams.get("pins"));
+  };
+  const pin = (n) => ({ n, eid, tag: "section", slide, box: { x: 0, y: 0, w: 10, h: 10 }, at: { x: 5, y: 5 }, point: { x: 5, y: 5 } });
+  assert.equal((await s.api("message", { text: "with pins", screenshot: true, current: slide, pins: [pin(1), pin(2)] })).status, 200);
+  await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  assert.deepEqual(pinsDrawn().map((p) => p.n), [1, 2]);
+  assert.match(fakeLog(fx).find((e) => e.type === "user").text, /Screenshot of slide 1 with the pin markers: /);
+  // the next message has no pins (a reloaded editor, or another tab's message): none drawn, none mentioned
+  assert.equal((await s.api("message", { text: "no pins now", screenshot: true, current: slide })).status, 200);
+  await waitFor(() => chatOf(fx).filter((e) => e.kind === "turn").length === 2, "the second turn");
+  assert.deepEqual(pinsDrawn(), []);
+  assert.match(fakeLog(fx).filter((e) => e.type === "user").at(-1).text, /Screenshot of slide 1: /);
+
+  // Stop while Chrome works: stopped at once, nothing sent, no picture left
+  fs.writeFileSync(path.join(fx.root, "slow"), "");
+  const shots = path.join(fx.home, "decks", fs.readdirSync(path.join(fx.home, "decks"))[0], "shots");
+  const before = fs.readdirSync(shots).length;
+  const t0 = Date.now();
+  const sending = s.api("message", { text: "stop me", screenshot: true, current: slide });
+  await waitFor(async () => (await s.api("status")).data.preparing, "the screenshot step");
+  assert.equal((await s.api("stop", {})).status, 200);
+  const r = await sending;
+  assert.equal(r.status, 409);
+  assert.equal(r.data.code, "stopped");
+  assert.ok(Date.now() - t0 < 5000, "not after Chrome's 10 s");
+  assert.equal(fs.readdirSync(shots).length, before);
+  assert.ok(!fakeLog(fx).some((e) => e.type === "user" && /stop me/.test(e.text)));
+});
+
+test("A screenshot that fails: the assistant is told, and the notice follows the message", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);   // no Chrome
+  const eid = firstSlideEid(fx.deck);
+  assert.equal((await s.api("message", { text: "how does it look?", screenshot: true, current: { index: 0, eid } })).status, 200);
+  await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  const chat = chatOf(fx), user = chat.findIndex((e) => e.kind === "user"), notice = chat.findIndex((e) => e.kind === "notice");
+  assert.ok(notice > user, "after the message it belongs to");
+  assert.match(chat[notice].text, /^Screenshot of slide 1 failed: Screenshots are not available/);
+  assert.match(fakeLog(fx).find((e) => e.type === "user").text, /asked for a screenshot of slide 1, but it could not be taken/);
+});
+
+test("A message too large: 413, and the connection is not used again", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const r = await fetch(`${s.url}/api/message`, { method: "POST", body: JSON.stringify({ text: "x".repeat(6e6) }),
+    headers: { "x-editor-token": s.token, "content-type": "application/json" } });
+  assert.equal(r.status, 413);
+  assert.equal(r.headers.get("connection"), "close");
+  assert.equal((await s.api("status")).status, 200);
+});
+
 test("Asset roots from config.json; a missing one stops the start before anything is written", async (t) => {
   const fx = fixture(t);
   const r = await failedStart(t, fx, { args: ["--port", "0", "--asset-root", path.join(fx.root, "nope")] });
