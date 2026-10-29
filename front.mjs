@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isSupportedPlatform, detectCapabilities, publicCapabilities, parsePort } from "./lib/capabilities.mjs";
-import { deckTarget, homeDir } from "./lib/deck-target.mjs";
+import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
 import { registerServer, printLogin } from "./lib/servers.mjs";
@@ -55,6 +55,8 @@ if (argv[0] === "login") await printLogin(HOME_DIR, argv[1] ? deckTarget(argv[1]
 
 /* The start deck, and the folders whose decks the menu offers. A folder without index.html opens the list
    of its decks; if it has none, its deck server says why, as for any deck that cannot be opened. */
+const homeNote = homeWarning(HOME_DIR);
+if (homeNote) console.warn(homeNote);
 const START = deckTarget(argv[0] || process.cwd());
 if (process.env.CLAUDE_MODEL)   // PinDeck 2 read it
   console.warn(`CLAUDE_MODEL is not used by PinDeck 3: choose the model in the editor's model menu, or start with --model ${process.env.CLAUDE_MODEL}.`);

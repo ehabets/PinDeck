@@ -39,7 +39,7 @@ import { isSupportedPlatform, detectCapabilities, publicCapabilities, capability
 import { unsupportedMessage } from "./lib/frameworks.mjs";
 import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
-import { deckTarget, homeDir } from "./lib/deck-target.mjs";
+import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
@@ -103,6 +103,8 @@ function checkDeck() {
   catch { return `${DECK_DIR} is not writable: PinDeck saves the deck through a temporary file in that folder.`; }
   return null;
 }
+const homeNote = !FRONT && homeWarning(HOME_DIR);   // behind the front, the front says it
+if (homeNote) console.warn(homeNote);
 const deckProblem = checkDeck();
 if (deckProblem) {
   console.error(`${deckProblem}\n\n${USAGE}`);

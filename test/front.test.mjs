@@ -362,3 +362,12 @@ test("Fronts side by side: login and cli.mjs find the PinDeck that serves the de
   assert.equal(alone.status, 1);
   assert.match(alone.stderr, /is open in another PinDeck already/);
 });
+
+test("Front: a chat written by PinDeck 2 in the state folder is pointed out", async (t) => {
+  const fx = fixture(t);
+  fs.mkdirSync(path.join(fx.home, "decks", "old-deck-12345678"), { recursive: true });
+  fs.writeFileSync(path.join(fx.home, "decks", "old-deck-12345678", "chat.json"), JSON.stringify({ chat: [], seq: 0, sessionId: "s" }));
+  const s = await startFront(t, fx);
+  assert.match(s.output(), /holds a chat written by PinDeck 2 \(decks\/old-deck-12345678\/chat\.json\)\. If PinDeck 2 uses this folder too/);
+  assert.equal(s.output().match(/written by PinDeck 2/g).length, 1, "once, by the front");
+});
