@@ -151,8 +151,8 @@ function pngPixels(png) {
 }
 /* A screenshot of the slide that shows no letterbox colour at its corners and edges. */
 async function assertFillsShot(s, slide, size, letterbox) {
-  const shot = await s.api(`shot?slide=${slide}`);
-  assert.equal(shot.status, 200, String(shot.data));
+  const t0 = Date.now(), shot = await s.api(`shot?slide=${slide}`);
+  assert.equal(shot.status, 200, `the screenshot that must fill the picture (${Date.now() - t0} ms): ${shot.data}`);
   const { width, height, at } = pngPixels(fs.readFileSync(String(shot.data).trim()));
   assert.deepEqual([width, height], size);
   for (const [x, y] of [[2, 2], [width - 3, 2], [2, height - 3], [width - 3, height - 3], [width >> 1, 2], [2, height >> 1]]) {
@@ -1302,21 +1302,24 @@ test("Real Chrome: screenshot, headless layout and PDF export through the login,
   const st = (await s.api("status")).data;
   assert.equal(st.capabilities.screenshot.available, true, st.capabilities.screenshot.reason);
 
+  let t0 = Date.now();
   const shot = await s.api("shot?slide=2");
-  assert.equal(shot.status, 200, String(shot.data));
+  assert.equal(shot.status, 200, `shot (${Date.now() - t0} ms): ${shot.data}`);
   const png = String(shot.data).trim();
   const img = fs.readFileSync(png);
   assert.equal(img.subarray(1, 4).toString(), "PNG");
   assert.equal(img.readUInt32BE(16), 1280);
   assert.ok(img.length > 20000, "a rendered slide, not a login page");
 
+  t0 = Date.now();
   const layout = await s.api("layout?slide=2");   // no editor tab: headless Chrome
-  assert.equal(layout.status, 200, String(layout.data));
+  assert.equal(layout.status, 200, `layout (${Date.now() - t0} ms): ${layout.data}`);
   assert.match(String(layout.data), /Motivation/);
 
   for (const kind of ["handout", "presentation"]) {
+    t0 = Date.now();
     const pdf = await s.api(`pdf?slide=${kind}`);
-    assert.equal(pdf.status, 200, String(pdf.data));
+    assert.equal(pdf.status, 200, `${kind} PDF (${Date.now() - t0} ms): ${pdf.data}`);
     const file = path.join(fx.deck, "export", `${path.basename(fx.deck)}-${kind}.pdf`);
     assert.equal(fs.readFileSync(file).subarray(0, 5).toString(), "%PDF-");
     assert.ok(fs.statSync(file).size > 100000, `${kind}: slides, not a login page`);
