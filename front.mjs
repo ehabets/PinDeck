@@ -23,7 +23,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isSupportedPlatform, detectCapabilities, publicCapabilities, parsePort } from "./lib/capabilities.mjs";
 import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
-import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
+import { goodHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
 import { registerServer, printLogin } from "./lib/servers.mjs";
 import { USAGE } from "./lib/usage.mjs";
@@ -385,6 +385,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   writeServerInfo();
   console.log(`PinDeck: ${loginUrl(loginCode(3600000))}`);
   console.log("  (a one-time login link, valid for an hour; for a new one: pindeck login)");
+  openOnEnter(() => loginUrl(loginCode(3600000)));
   console.log(chooser ? `Decks: ${START.dir}` : `Deck: ${START.dir}`);
   console.log(`Server: ${CAPS.label}`);
   for (const [name, c] of Object.entries(publicCapabilities(CAPS)))

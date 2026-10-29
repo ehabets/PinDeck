@@ -42,7 +42,7 @@ import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./li
 import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { listDecks, linkProblem } from "./lib/deck-list.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
-import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
+import { goodHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
 /* ---- Config ------------------------------------------------------------------ */
@@ -1923,6 +1923,7 @@ server.listen(PORT, "127.0.0.1", () => {
   } else {
     console.log(`PinDeck: ${loginUrl(loginCode(3600000))}`);
     console.log("  (a one-time login link, valid for an hour; for a new one: pindeck login)");
+    openOnEnter(() => loginUrl(loginCode(3600000)));
     console.log(`Deck: ${DECK_DIR}`);
     console.log(`Server: ${CAPS.label}`);
     for (const [name, c] of Object.entries(publicCapabilities(CAPS)))

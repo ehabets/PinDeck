@@ -218,3 +218,20 @@ test('assignEids stays fast on a large deck without ids, and numbers repeated na
   assert.equal(new Set(eids).size, 1000);
   assert.match(r.html, /<li data-eid="same-title\/li-12">/);
 });
+
+test('macOS terminal: Enter opens a new login link in the browser; elsewhere nothing changes', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { openOnEnter } = await import('../lib/login.mjs');
+  const opened = [], terminal = Object.assign(new EventEmitter(), { isTTY: true });
+  let n = 0;
+  const log = console.log; console.log = () => {};
+  try {
+    assert.equal(openOnEnter(() => `link-${++n}`, { platform: 'darwin', input: terminal, open: (u) => opened.push(u) }), true);
+    terminal.emit('data', 'x');
+    terminal.emit('data', '\n');
+    terminal.emit('data', '\r\n');
+    assert.deepEqual(opened, ['link-1', 'link-2'], 'a new link for each Enter');
+    assert.equal(openOnEnter(() => 'l', { platform: 'linux', input: terminal, open: () => assert.fail() }), false);
+    assert.equal(openOnEnter(() => 'l', { platform: 'darwin', input: new EventEmitter(), open: () => assert.fail() }), false, 'not a terminal');
+  } finally { console.log = log; }
+});
