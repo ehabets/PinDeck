@@ -60,12 +60,14 @@ code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: 
 .toolbar .group { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; }
 .toolbar .group:first-child { flex: 1 1 auto; }
 .toolbar .group:first-child > :not(.deck-wrap) { flex: none; }
+/* narrow: the deck's name is shortened, never hidden (it opens the deck menu) */
 @container (max-width: 640px) {
-  .toolbar kbd, .toolbar .deck-wrap { display: none; }
+  .toolbar kbd { display: none; }
+  .toolbar .deck-wrap { max-width: 9em; }
 }
 .pos { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 52px; text-align: center; }
 /* the deck's name; behind the front (several decks on one port) it opens the deck menu */
-.deck-wrap { min-width: 0; margin-left: 2px; }
+.deck-wrap { min-width: 0; max-width: 12em; margin-left: 2px; }
 .deck-btn { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 2px 6px;
   border: 0; background: none; color: inherit; font: inherit; }
 .deck-btn:hover { background: none; }
