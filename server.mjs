@@ -181,10 +181,23 @@ function writeDeck(f, content, manual = false) {
   ourWrites.set(f, { hash: hash(content), manual });
   writeAtomic(path.join(DECK_DIR, f), content);
 }
+/* A file PinDeck itself writes or deletes in the deck folder (an upload, a picture, an export, a file Undo
+   brings back or removes) must be there once symlinks are followed: a figures/ or export/ that links
+   elsewhere is not written through, as serving refuses to read through it. */
+function deckPath(rel) {
+  const abs = path.join(DECK_DIR, rel);
+  let p = abs;
+  while (!fs.existsSync(p) && path.dirname(p) !== p) p = path.dirname(p);
+  const real = realOr(p), deck = realOr(DECK_DIR);
+  if (real !== deck && !real.startsWith(deck + path.sep))
+    throw Object.assign(new Error(`${rel} leads out of the deck folder (through a symlink): PinDeck does not write or delete there.`), { status: 409 });
+  return abs;
+}
+const removeDeckFile = (rel) => fs.rmSync(deckPath(rel), { force: true });
 /* Other files PinDeck writes into the deck (uploads, imported pictures, undo/redo of deleted files) */
 function writeDeckFile(rel, data, manual = true) {
+  const abs = deckPath(rel);
   state.turn?.touched.add(rel);
-  const abs = path.join(DECK_DIR, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   ourWrites.set(rel, { hash: hash(data.toString("utf8")), manual });   // manual: no slide reload for a new file
   writeAtomic(abs, data);
@@ -197,7 +210,7 @@ const isText = (v) => v == null || typeof v === "string" || !v.includes(0);
 const asText = (v) => (v == null ? "" : String(v));
 const isAs = (rel, v) => sameContent(path.join(DECK_DIR, rel), v ?? null);
 function putDeckFile(rel, v) {   // undo and redo: back to v (null: remove the file)
-  if (v == null) return fs.rmSync(path.join(DECK_DIR, rel), { force: true });
+  if (v == null) return removeDeckFile(rel);
   fs.mkdirSync(path.dirname(path.join(DECK_DIR, rel)), { recursive: true });
   writeDeck(rel, v);
 }
@@ -392,9 +405,10 @@ function exportPdf(kind, includeHidden = false) {
   if (!CAPS.pdfExport.available) return Promise.reject(Object.assign(new Error(`PDF export is not available: ${CAPS.pdfExport.reason}.`), { status: 501 }));
   const split = kind === "presentation";
   const name = `${DECK_NAME}-${split ? "presentation" : "handout"}.pdf`;
-  const out = path.join(DECK_DIR, "export", name);
+  const out = path.join(DECK_DIR, "export", name);   // checked when the export runs (deckPath)
   const profile = (step) => path.join(STATE_DIR, "chrome", `pdf-${process.pid}-${Date.now()}-${step}`);
   const run = async () => {
+    deckPath(`export/${name}`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const layoutProfile = profile("layout"), printProfile = profile("print");
     const html = await printLayout(CHROME, chromeStart(layoutProfile,
@@ -1125,6 +1139,7 @@ function deletePlan(eid) {
     const abs = path.resolve(DECK_DIR, ref);
     const rel = path.relative(DECK_DIR, abs).split(path.sep).join("/");
     if (rel.startsWith("..") || rel.startsWith("vendor/") || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return [];
+    try { deckPath(rel); } catch { return []; }   // through a symlink out of the deck: never offered
     const usedBy = others.filter((o) => o.uses(abs)).map((o) => o.name);
     const usedElsewhere = fileRefs(rest).some((r) => path.resolve(DECK_DIR, r) === abs) || css.includes(ref) || css.includes(rel) || usedBy.length > 0;
     return [{ rel, bytes: fs.statSync(abs).size, usedElsewhere, usedBy }];
@@ -1159,6 +1174,8 @@ function undoConflicts(t, direction) {
   // ones (which must be unchanged); redo the other way round
   const comeBack = direction === "undo" ? t.deletedFiles || [] : t.addedFiles || [];
   const go = direction === "undo" ? t.addedFiles || [] : t.deletedFiles || [];
+  // a file to bring back or remove through a symlink out of the deck: not done (deckPath), so not begun
+  for (const { rel } of [...comeBack, ...go]) { try { deckPath(rel); } catch { files.push(rel); } }
   for (const { rel, data } of comeBack) {
     const abs = path.join(DECK_DIR, rel);
     if (fs.existsSync(abs) && !sameContent(abs, data)) files.push(rel);
@@ -1184,7 +1201,7 @@ function undo(res) {
   if (diverged.length) return conflict(res, "undo", diverged);
   for (const rel of changeFiles(t)) if (!isAs(rel, t.before[rel])) putDeckFile(rel, t.before[rel] ?? null);   // null: the change created it
   for (const { rel, data } of t.deletedFiles || []) writeDeckFile(rel, data, false);   // files deleted with an element come back too
-  for (const { rel } of t.addedFiles || []) fs.rmSync(path.join(DECK_DIR, rel), { force: true });   // imported figures go
+  for (const { rel } of t.addedFiles || []) removeDeckFile(rel);   // imported figures go
   t.undone = true;
   state.redo.push(t);
   const names = t.files.map((f) => f.file);
@@ -1534,7 +1551,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { path: abs, kind, bytes: buf.length, pages: info?.pages, pageSize: info?.sizes[0] });
       }
       const rel = attachPath(original);
-      writeDeckFile(rel, buf);
+      try { writeDeckFile(rel, buf); } catch (e) { return json(res, e.status || 500, { error: e.message }); }
       state.uploads.add(rel);
       return json(res, 200, { path: rel, kind, bytes: buf.length, url: `deck/${rel}` });
     }
@@ -1682,7 +1699,7 @@ const server = http.createServer(async (req, res) => {
       if (diverged.length) return conflict(res, "redo", diverged);
       state.redo.pop();
       for (const rel of changeFiles(t)) if (!isAs(rel, t.after[rel])) putDeckFile(rel, t.after[rel] ?? null);
-      for (const { rel } of t.deletedFiles || []) fs.rmSync(path.join(DECK_DIR, rel), { force: true });
+      for (const { rel } of t.deletedFiles || []) removeDeckFile(rel);
       for (const { rel, data } of t.addedFiles || []) writeDeckFile(rel, data, false);
       t.undone = false;
       state.notes.push(t.kind === "manual" ? `The user redid their hand edit: ${t.label}.`
@@ -1714,7 +1731,7 @@ const server = http.createServer(async (req, res) => {
       const turnId = recordHandEdit(before, plan.html, label,
         `The user deleted ${plan.eid} (${plan.tag}) by hand` + (deletedFiles.length ? `, together with the file(s) ${deletedFiles.map((f) => f.rel).join(", ")}` : "") + ".",
         { manual: false, deletedFiles });
-      for (const f of deletedFiles) fs.rmSync(path.join(DECK_DIR, f.rel), { force: true });
+      for (const f of deletedFiles) removeDeckFile(f.rel);
       return json(res, 200, { turnId, deleted: plan.eid, files: deletedFiles.map((f) => f.rel) });
     }
 
@@ -1841,10 +1858,10 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     // malformed JSON or %-encoding in a request is the caller's mistake, not a server error
     const large = e.message === "body too large", bad = large || e instanceof SyntaxError || e instanceof URIError;
-    if (!bad) console.error(e);
+    if (!bad && !e.status) console.error(e);
     // the rest of a body too large is not read: the connection is not used again
     if (large && !res.headersSent) res.setHeader("connection", "close");
-    if (!res.headersSent) text(res, large ? 413 : bad ? 400 : 500, String(e.message || e));
+    if (!res.headersSent) text(res, e.status || (large ? 413 : bad ? 400 : 500), String(e.message || e));
   }
 });
 

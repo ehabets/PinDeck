@@ -944,6 +944,26 @@ test("Hand-edit requests without an element (or with nonsense) change nothing an
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 
+test("A figures/ or export/ folder that links out of the deck: PinDeck neither writes nor deletes through it", async (t) => {
+  const fx = fixture(t);
+  const outside = path.join(fx.root, "outside");
+  fs.mkdirSync(outside);
+  fs.renameSync(path.join(fx.deck, "figures"), path.join(outside, "figures"));
+  fs.symlinkSync(path.join(outside, "figures"), path.join(fx.deck, "figures"));
+  fs.mkdirSync(path.join(outside, "export"));
+  fs.symlinkSync(path.join(outside, "export"), path.join(fx.deck, "export"));
+  const s = await startServer(t, fx);
+  const up = await fetch(`${s.url}/api/upload`, { method: "POST", body: Buffer.from("\x89PNG\r\n\x1a\n"),
+    headers: { "x-editor-token": s.token, "x-filename": "pic.png" } });
+  assert.equal(up.status, 409);
+  assert.match((await up.json()).error, /figures\/pic\.png leads out of the deck folder/);
+  assert.deepEqual(fs.readdirSync(path.join(outside, "figures")).filter((f) => f.startsWith("pic")), []);
+  const eid = /<img\b[^>]*transmission_loss\.svg[^>]*>/.exec(fs.readFileSync(path.join(fx.deck, "index.html"), "utf8"))[0].match(/data-eid="([^"]+)"/)[1];
+  assert.deepEqual((await s.api(`delete-info?eid=${encodeURIComponent(eid)}`)).data.files, [], "not offered for deletion");
+  assert.equal((await s.api("delete", { eid, files: ["figures/transmission_loss.svg"] })).status, 200);
+  assert.ok(fs.existsSync(path.join(outside, "figures", "transmission_loss.svg")));
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);
