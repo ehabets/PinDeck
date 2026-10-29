@@ -990,9 +990,11 @@ function buildPrompt({ text: userText, pins = [], selection, layouts = [], curre
 async function pdfFigure({ file = "", page = "1", box = "", out = "", width = "", cancelled = () => false }) {
   const bad = (t, status = 400) => ({ status, text: t });
   if (!CAPS.pdfPages.available) return bad(CAPS.pdfPages.reason, 501);
+  // compared by real path: the Codex bridge names files by theirs, and the deck's path may go through a
+  // symlink (~/Dropbox, /tmp on macOS)
   const abs = [path.isAbsolute(file) ? file : path.join(DECK_DIR, file), path.join(PDF_DIR, path.basename(file))]
     .map((f) => path.resolve(f)).find((f) => /\.pdf$/i.test(f) && fs.existsSync(f) &&
-      [DECK_DIR, PDF_DIR].some((d) => f.startsWith(d + path.sep)));
+      [DECK_DIR, PDF_DIR].map(realOr).some((d) => realOr(f).startsWith(d + path.sep)));
   if (!abs) return bad(`No PDF "${file}": use the path from the attached files, or a .pdf in the deck folder.`, 404);
   const info = await pdfInfo(abs, STATE_DIR);
   const n = Number(page);

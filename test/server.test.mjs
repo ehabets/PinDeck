@@ -957,6 +957,17 @@ test("An assistant that changes .git/config: restored after the turn, before Pin
   assert.equal(fs.readFileSync(path.join(fx.deck, ".git", "config"), "utf8"), "[core]\n\tbare = false\n");
 });
 
+test("pdf-figure finds a PDF of the deck by its real path when the deck's path goes through a symlink", async (t) => {
+  const fx = fixture(t);
+  const link = path.join(fx.root, "link");
+  fs.symlinkSync(fx.root, link);
+  fs.writeFileSync(path.join(fx.deck, "paper.pdf"), "%PDF-1.4\n");
+  const s = await startServer(t, fx, { deck: path.join(link, path.basename(fx.deck)) });
+  const real = path.join(fs.realpathSync(fx.deck), "paper.pdf");
+  const r = await s.api(`pdf-figure?${new URLSearchParams({ file: real, page: "1" })}`);
+  assert.doesNotMatch(String(r.data), /No PDF/, String(r.data));
+});
+
 test("Decks are .html files: a .htm file is not one", async (t) => {
   const fx = fixture(t);
   const old = path.join(fx.deck, "old.htm");
