@@ -83,7 +83,7 @@ if (!url || !token) {
   const found = await serverFor(homeDir(), deck);
   if (!found) { console.error(`No running PinDeck serves ${path.join(deck.dir, deck.file)} (start it with: pindeck ${deckArg || "."}).`); process.exit(1); }
   ({ url, token } = found.own || found.front);
-  if (!found.own) url = `${url}/d/${deck.key}`;
+  if (!found.own) url = `${url}/d/${found.key}`;
 }
 
 /* layout and shot take several slides, so the assistant needs no shell loop or pipe (which PinDeck refuses) */

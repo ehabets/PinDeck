@@ -300,7 +300,7 @@ test("Front: the tabs of a browser share one event stream; a deck server that st
   await waitFor(() => fs.existsSync(saved) && fs.readFileSync(saved, "utf8").includes('"kind":"turn"'), "the chat saved");
   assert.equal(of("1", "chat").length, 0, "tab 1 gets its own deck's events only");
   // the second deck's server is killed: the tab is told, the deck opens again, and a new hello brings its state
-  process.kill(serverPid(path.join(fx.talks, "second.html")), "SIGKILL");
+  process.kill(-serverPid(path.join(fx.talks, "second.html")), "SIGKILL");   // its process group: with the assistants it started
   await waitFor(() => of("2", "gone").length, "tab 2 told");
   await waitFor(() => of("2", "hello").length === 2, "a new hello");
   assert.ok(of("2", "hello")[1].data.data.chat.some((e) => e.kind === "turn"), "with the chat as saved");
@@ -318,7 +318,7 @@ test("Front: a proxied event stream ends when its deck server stops", async (t) 
   const s = await startFront(t, fx);
   const events = readEvents(t, `${s.url}/d/${key(fx.talks)}/api/events`, s.jar);
   await waitFor(() => events.list.some((e) => e.ev === "hello"), "hello");
-  process.kill(serverPid(fx.talks), "SIGKILL");
+  process.kill(-serverPid(fx.talks), "SIGKILL");   // its process group: with the assistants it started
   await Promise.race([events.done, new Promise((_, no) => setTimeout(() => no(new Error("the stream stayed open")), 5000))]);
 });
 
@@ -383,4 +383,17 @@ test("Front: an asset root that goes while PinDeck runs: its decks leave the lis
   const second = key(path.join(fx.talks, "second.html"));
   assert.equal((await s.api(`/d/${second}/api/status`)).status, 200, "a deck server started now leaves the gone root out");
   await waitFor(() => /Asset root .*shared is not a folder \(any more\): left out\./.test(s.output()), "the warning");
+});
+
+test("Front started through a symlinked folder: cli.mjs and login from the real folder still find it", async (t) => {
+  const fx = fixture(t);
+  const alias = path.join(fx.root, "alias");
+  fs.symlinkSync(fx.talks, alias);   // as macOS names /var/... and /private/var/...
+  const s = await startFront(t, fx, [alias]);
+  const run = (file, args, cwd) => spawnSync(process.execPath, [file, ...args], { env: env(fx), encoding: "utf8", cwd });
+  const slides = run(CLI, ["slides"], fx.talks);
+  assert.equal(slides.status, 0, slides.stderr);
+  const login = run(FRONT, ["login", fx.talks], fx.root);
+  assert.equal(login.status, 0, login.stderr);
+  assert.match(login.stdout, new RegExp(`${s.url}/login\\?code=[0-9a-f]+&next=%2Fd%2F`));
 });
