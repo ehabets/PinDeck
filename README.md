@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS, and Linux as a beta · Version 3 beta preview** (`3.1.0-beta.1`). On Linux, PinDeck runs as a
+> **macOS, and Linux as a beta · Version 3 beta preview** (`3.2.0-beta.1`). On Linux, PinDeck runs as a
 > headless server that you use from your Mac's browser through an SSH tunnel (see
 > [Running on a Linux server](#running-on-a-linux-server-beta)). Windows is not supported. The beta is on
 > npm’s `beta` channel and the [`v3-beta`](https://github.com/ehabets/PinDeck/tree/v3-beta) branch; stable
@@ -42,7 +42,7 @@ Install the beta from npm:
 ```bash
 npx pindeck@beta /path/to/deck
 # Or select this exact beta:
-npx pindeck@3.1.0-beta.1 /path/to/deck
+npx pindeck@3.2.0-beta.1 /path/to/deck
 ```
 
 Or run it from the `v3-beta` branch, which includes the example deck:
@@ -561,9 +561,12 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Versions
 
-* **Next beta (on `v3.2.0-beta`)**: fixes from a code review and a round of user tests.
+* **3.2.0-beta.1**: fixes from a code review and a round of user tests.
   - Security: deck pages run sandboxed, so a deck's script can no longer use the API, read other decks or
-    send messages; the login link's `next` stays on PinDeck.
+    send messages; the login link's `next` stays on PinDeck. A deck's own script cannot use `localStorage`
+    there either (it throws).
+  - Typing in a bullet that cannot be saved because the deck changed meanwhile can be copied, as other text
+    can; a deck that never chose a model keeps the one its conversation started with.
   - Several decks in one folder: a turn no longer records or undoes another deck's files, and deleting a
     picture keeps a file another deck uses. Subfolder decks are locked for the assistant.
   - Each deck keeps its provider, model and effort; config.json is merged, not overwritten; unusable saved
