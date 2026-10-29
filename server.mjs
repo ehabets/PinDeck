@@ -1777,9 +1777,11 @@ const server = http.createServer(async (req, res) => {
       const before = snapshot(EDITABLE);
       const r1 = setInner(before[DECK_FILE], b.eid, [], String(b.html ?? ""));
       if (!r1) return json(res, 404, { error: `No element ${b.eid} in ${DECK_FILE}.` });
-      const r2 = insertAfter(r1.html, b.eid, { tag: "li", cls: b.cls || "", inner: String(b.newHtml ?? ""), newEid: b.newEid });
+      // the new bullet's elements get ids of their own: never a copy of one from the bullet it was split from
+      const inner = String(b.newHtml ?? "").replace(/\sdata-eid="[^"]*"/g, "");
+      const r2 = insertAfter(r1.html, b.eid, { tag: "li", cls: b.cls || "", inner, newEid: b.newEid });
       const short = (e) => e.replace(/^[^/]+\//, "/");
-      const turnId = recordHandEdit(before, r2.html, `New bullet after ${short(b.eid)}`,
+      const turnId = recordHandEdit(before, assignEids(r2.html).html, `New bullet after ${short(b.eid)}`,
         `The user added a bullet (${r2.eid}) after ${b.eid} by pressing Enter while editing; ${b.eid} now reads "${String(b.text || "").slice(0, 200)}".`);
       return json(res, 200, { turnId, eid: r2.eid });
     }

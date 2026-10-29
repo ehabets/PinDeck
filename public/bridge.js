@@ -812,12 +812,22 @@
     tail.setStart(r.startContainer, r.startOffset);
     const subList = [...el.children].find((c) => c.tagName === "UL" || c.tagName === "OL");
     if (subList) tail.setEndBefore(subList); else tail.setEnd(el, el.childNodes.length);
+    // the elements the caret is in (an equation, a <strong>): the split cuts each in two, and extractContents
+    // copies them, attributes and all, into the new bullet
+    const cut = [];
+    for (let n = r.startContainer; n && n !== el; n = n.parentNode) if (n.nodeType === 1) cut.unshift(n);
     const frag = tail.extractContents();
     const li = document.createElement("li");
     const cls = [...el.classList].filter((c) => !c.startsWith("__") && c !== "visible" && c !== "current-fragment").join(" ");
     if (cls) li.className = cls;
     li.appendChild(frag);
     el.after(li);
+    // their copies: no id of their own (the server gives new ones), and gone where the split left them
+    // empty, on either side (no empty <strong> or equation line left behind)
+    const copies = [];
+    for (let n = li.firstChild, i = 0; i < cut.length && n?.nodeType === 1 && n.tagName === cut[i].tagName; n = n.firstChild, i++) copies.push(n);
+    for (const n of copies) n.removeAttribute("data-eid");
+    for (const n of [...cut, ...copies].reverse()) if (n.isConnected && isBlank(n)) n.remove();
     // no stray spaces at the split
     const trim = (node, end) => {
       const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
