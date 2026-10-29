@@ -25,7 +25,10 @@ jobs:
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Syntax check
-        run: for f in server.mjs cli.mjs lib/*.mjs public/*.js; do node --check "$f"; done
+        run: for f in *.mjs lib/*.mjs public/*.js; do node --check "$f"; done
+      # nothing is staged that fails the tests (tools the runner lacks, such as LibreOffice, skip their own)
+      - name: Tests
+        run: node --test
       - name: Stage on the appropriate npm channel
         run: |
           release_version="$(node -p 'require("./package.json").version')"
