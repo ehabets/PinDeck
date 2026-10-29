@@ -8,7 +8,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { deckTarget } from "../lib/deck-target.mjs";
 
@@ -252,4 +252,70 @@ test("Front: a deck with no editor open closes after a while, and opens again wh
   await waitFor(() => /\[second\.html\] no editor open .* closing it/.test(s.output()), "the idle deck to close");
   await waitFor(() => /\[second\.html\] closed/.test(s.output()), "its server to end");
   assert.equal((await s.api(`${second}/api/status`)).data.deckFile, "second.html", "opened again");
+});
+
+/* The pid of the deck server the front started for this deck path */
+const serverPid = (deck) => +spawnSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" }).stdout.split("\n")
+  .find((l) => l.includes(`server.mjs ${deck} --port`))?.trim().split(/\s+/)[0];
+/* An event stream as the browser reads it: the blocks so far, as { ev, data } */
+function readEvents(t, url, headers) {
+  const ctrl = new AbortController(), list = [];
+  t.after(() => ctrl.abort());
+  const done = (async () => {
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    const dec = new TextDecoder();
+    let buf = "";
+    for await (const chunk of res.body) {
+      buf += dec.decode(chunk, { stream: true });
+      for (let i; (i = buf.indexOf("\n\n")) >= 0;) {
+        const block = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        const ev = /^event: (.*)$/m.exec(block)?.[1], data = /^data: (.*)$/m.exec(block)?.[1];
+        if (ev) list.push({ ev, data: JSON.parse(data) });
+      }
+    }
+  })().catch(() => {});
+  return { list, done };
+}
+
+test("Front: the tabs of a browser share one event stream; a deck server that stops is opened again", async (t) => {
+  const fx = fixture(t);
+  const s = await startFront(t, fx);
+  const second = key(path.join(fx.talks, "second.html"));
+  const stream = readEvents(t, `${s.url}/events?stream=test-stream-1`, s.jar);
+  await waitFor(() => stream.list.some((e) => e.ev === "ready"), "the stream");
+  const sub = (body) => fetch(`${s.url}/events/subscribe`, { method: "POST", body: JSON.stringify({ stream: "test-stream-1", ...body }),
+    headers: { ...s.jar, origin: s.url, "content-type": "application/json" } });
+  // two tabs: each gets its deck's events as if it had its own stream, starting with "hello"
+  assert.equal((await sub({ tab: "1", deck: key(fx.talks), on: true })).status, 200);
+  assert.equal((await sub({ tab: "2", deck: second, on: true })).status, 200);
+  const of = (tab, type) => stream.list.filter((e) => e.ev === "deck" && e.data.tab === tab && e.data.type === type);
+  await waitFor(() => of("1", "hello").length && of("2", "hello").length, "both hellos");
+  assert.equal(of("2", "hello")[0].data.data.status.deckFile, "second.html");
+  assert.equal((await s.api(`/d/${second}/api/message`, { text: "fake-op append notes.txt" })).status, 200);
+  await waitFor(() => of("2", "chat").some((e) => e.data.data.kind === "turn"), "tab 2's turn");
+  const saved = path.join(fx.home, "decks", second, "chat.json");
+  await waitFor(() => fs.existsSync(saved) && fs.readFileSync(saved, "utf8").includes('"kind":"turn"'), "the chat saved");
+  assert.equal(of("1", "chat").length, 0, "tab 1 gets its own deck's events only");
+  // the second deck's server is killed: the tab is told, the deck opens again, and a new hello brings its state
+  process.kill(serverPid(path.join(fx.talks, "second.html")), "SIGKILL");
+  await waitFor(() => of("2", "gone").length, "tab 2 told");
+  await waitFor(() => of("2", "hello").length === 2, "a new hello");
+  assert.ok(of("2", "hello")[1].data.data.chat.some((e) => e.kind === "turn"), "with the chat as saved");
+  // only for streams of this login, and a tab that leaves gets nothing more
+  assert.equal((await fetch(`${s.url}/events?stream=test-stream-2`)).status, 403);
+  assert.equal((await sub({ tab: "2", on: false })).status, 200);
+  const n = stream.list.length;
+  assert.equal((await s.api(`/d/${second}/api/message`, { text: "again" })).status, 200);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(stream.list.slice(n).filter((e) => e.data?.tab === "2").length, 0);
+});
+
+test("Front: a proxied event stream ends when its deck server stops", async (t) => {
+  const fx = fixture(t);
+  const s = await startFront(t, fx);
+  const events = readEvents(t, `${s.url}/d/${key(fx.talks)}/api/events`, s.jar);
+  await waitFor(() => events.list.some((e) => e.ev === "hello"), "hello");
+  process.kill(serverPid(fx.talks), "SIGKILL");
+  await Promise.race([events.done, new Promise((_, no) => setTimeout(() => no(new Error("the stream stayed open")), 5000))]);
 });

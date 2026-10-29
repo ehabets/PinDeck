@@ -876,59 +876,78 @@ function applyStatus(s) {
   shownProblem = s.deckProblem;
   renderToolbar();
 }
-function connect() {
+/* The deck's events: behind the front through the worker all of this browser's tabs share (browsers open at
+   most 6 connections to one port; see public/events-worker.js), on its own server straight from it */
+function openEvents(on, onError) {
+  if (FRONT && typeof SharedWorker === "function") {
+    const deck = BASE.split("/")[2];
+    const w = new SharedWorker("/editor/events-worker.js", { name: "pindeck-events" });
+    w.port.onmessage = ({ data: m }) => (m.type === "error" ? onError() : on[m.type]?.(m.data));
+    w.port.start();
+    w.port.postMessage({ subscribe: deck });
+    addEventListener("pagehide", () => w.port.postMessage({ close: true }));
+    addEventListener("pageshow", (e) => { if (e.persisted) w.port.postMessage({ subscribe: deck }); });
+    return;
+  }
   const es = new EventSource(BASE + "api/events");
-  es.addEventListener("hello", (ev) => {
-    const d = JSON.parse(ev.data);
-    // reconnected after missing file events (tunnel dropped, laptop asleep): show the files as they are now
-    if (state.rev && d.rev && d.rev !== state.rev && main) { loadMain(); loadMeasure(); }
-    if (d.rev) state.rev = d.rev;
-    clearChat();
-    state.turns = new Map(d.turns.map((t) => [t.id, t]));
-    d.chat.forEach(renderEntry);
-    applyStatus(d.status);
-    scrollChat();
-  });
-  es.addEventListener("chat", (ev) => {
-    const e = JSON.parse(ev.data);
-    if ((e.kind === "turn" || e.kind === "edit") && e.turnId) state.turns.set(e.turnId, { id: e.turnId, undone: false });
-    renderEntry(e);
-    scrollChat();
-  });
-  es.addEventListener("chat-update", (ev) => renderEntry(JSON.parse(ev.data)));
-  es.addEventListener("import", (ev) => showImportThumbs(JSON.parse(ev.data)));
-  es.addEventListener("status", (ev) => applyStatus(JSON.parse(ev.data)));
-  es.addEventListener("reset", () => { clearChat(); state.turns.clear(); });
-  es.addEventListener("undone", (ev) => {
-    const d = JSON.parse(ev.data);
-    const t = state.turns.get(d.turnId);
-    if (t) t.undone = d.undone !== false;
-    rerenderTurns();
-  });
-  es.addEventListener("files", (ev) => {
-    const { files, manual, rev } = JSON.parse(ev.data);
-    if (rev) state.rev = rev;
-    const cssOnly = files.every((f) => f.endsWith(".css"));
-    if (manual && main) {
-      loadMeasure();   // the visible slide already shows the hand edit
-    } else if (cssOnly && main) {
-      main.bridge.reloadCss(files);
-      measure?.bridge?.reloadCss(files);
-    } else {
-      loadMain();
-      loadMeasure();
-    }
-  });
-  es.addEventListener("measure", async (ev) => {
-    const { id, index } = JSON.parse(ev.data);
-    try { api("measure-result", { id, result: await queueMeasure(index) }); }
-    catch (err) { api("measure-result", { id, error: String(err) }); }
-  });
+  for (const [type, fn] of Object.entries(on)) es.addEventListener(type, (ev) => fn(JSON.parse(ev.data)));
+  es.onerror = onError;
+}
+function connect() {
+  openEvents({
+    hello(d) {
+      // reconnected after missing file events (tunnel dropped, laptop asleep, deck server restarted): show the
+      // files as they are now
+      if (state.rev && d.rev && d.rev !== state.rev && main) { loadMain(); loadMeasure(); }
+      if (d.rev) state.rev = d.rev;
+      clearChat();
+      state.turns = new Map(d.turns.map((t) => [t.id, t]));
+      d.chat.forEach(renderEntry);
+      applyStatus(d.status);
+      scrollChat();
+    },
+    chat(e) {
+      if ((e.kind === "turn" || e.kind === "edit") && e.turnId) state.turns.set(e.turnId, { id: e.turnId, undone: false });
+      renderEntry(e);
+      scrollChat();
+    },
+    "chat-update": (e) => renderEntry(e),
+    import: (d) => showImportThumbs(d),
+    status: (s) => applyStatus(s),
+    reset() { clearChat(); state.turns.clear(); },
+    undone(d) {
+      const t = state.turns.get(d.turnId);
+      if (t) t.undone = d.undone !== false;
+      rerenderTurns();
+    },
+    files({ files, manual, rev }) {
+      if (rev) state.rev = rev;
+      const cssOnly = files.every((f) => f.endsWith(".css"));
+      if (manual && main) {
+        loadMeasure();   // the visible slide already shows the hand edit
+      } else if (cssOnly && main) {
+        main.bridge.reloadCss(files);
+        measure?.bridge?.reloadCss(files);
+      } else {
+        loadMain();
+        loadMeasure();
+      }
+    },
+    async measure({ id, index }) {
+      try { api("measure-result", { id, result: await queueMeasure(index) }); }
+      catch (err) { api("measure-result", { id, error: String(err) }); }
+    },
+    // the deck server stopped: the front opens it again and its "hello" brings the state as it is then
+    gone(d) {
+      $("conn").classList.remove("on");
+      $("conn").title = d?.error || "The deck's server stopped; reconnecting…";
+      if (d?.error) toast(d.error, { ms: 20000 });
+    },
   // EventSource reconnects by itself; if the server restarted, the login cookie is stale: reload the page,
   // which asks for a new login link
-  es.onerror = async () => {
+  }, async () => {
     try { if ((await api("ping")).status === 403) location.reload(); } catch {}
-  };
+  });
 }
 
 /* ---- New slides --------------------------------------------------------------------------------------

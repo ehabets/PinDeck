@@ -172,6 +172,9 @@ function proxy(req, res, d, rest, anonymous = false) {
   const up = http.request(d.url + rest, { method: req.method, headers }, (r) => {
     res.writeHead(r.statusCode, r.headers);
     r.pipe(res);
+    // the deck server stopped mid-answer (an event stream, say): end ours too, or the browser waits forever
+    r.on("aborted", () => res.destroy());
+    r.on("error", () => res.destroy());
   });
   up.on("error", () => { if (!res.headersSent) page(res, 502, "This deck stopped answering", "Reload the page to open it again."); else res.destroy(); });
   if (rest.split("?")[0] === "/api/events") {
@@ -180,6 +183,83 @@ function proxy(req, res, d, rest, anonymous = false) {
   }
   res.on("close", () => { if (!res.writableFinished) up.destroy(); });
   req.pipe(up);
+}
+
+/* ---- One event stream per browser -------------------------------------------------------------------
+   Browsers open at most 6 connections to one host and port, and each editor tab held one open for its deck's
+   events: a sixth tab never loaded. The tabs of a browser share one stream through a shared worker
+   (public/events-worker.js): GET /events?stream=<id> holds it, POST /events/subscribe adds a tab's deck (the
+   front opens that deck's events on its server and passes them on, marked with the tab) or removes it. If a
+   deck server stops, the deck is opened again and the tab gets its state afresh (its "hello"). */
+const streams = new Map();   // stream id -> { res, tabs: Map(tab -> { stop() }) }
+function eventStream(res, id) {
+  streams.get(id)?.res.end();   // the worker reconnected: its old stream is done
+  const st = { res, tabs: new Map() };
+  streams.set(id, st);
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+  res.write("event: ready\ndata: {}\n\n");
+  const ping = setInterval(() => res.write(": ping\n\n"), 20000);
+  res.on("close", () => {
+    clearInterval(ping);
+    if (streams.get(id) === st) streams.delete(id);
+    for (const t of st.tabs.values()) t.stop();
+  });
+}
+function follow(st, tab, key) {
+  let stopped = false, up = null, tries = 0;
+  const send = (type, raw) => {
+    if (!stopped && !st.res.writableEnded) st.res.write(`event: deck\ndata: {"tab":${JSON.stringify(tab)},"type":${JSON.stringify(type)},"data":${raw}}\n\n`);
+  };
+  const retry = () => {
+    if (stopped || quitting) return;
+    if (++tries > 20) return send("gone", JSON.stringify({ error: "The deck stopped answering. Reload the page." }));
+    setTimeout(connect, Math.min(5000, 200 * tries));
+  };
+  async function connect() {
+    if (stopped || quitting) return;
+    let d = decks.get(key);
+    try {
+      if (!d) {
+        const entry = START.key === key && !chooser ? { key, dir: START.dir, file: START.file } : decksNow().find((e) => e.key === key);
+        if (!entry || entry.problem) return send("gone", JSON.stringify({ error: entry?.problem || "This deck is not in the deck folder or an asset root (any more)." }));
+        d = entry;
+      }
+      d = await openDeck(d);
+    } catch (e) { return send("gone", JSON.stringify({ error: e.message })); }
+    if (stopped) return;
+    up = http.get(d.url + "/api/events", { headers: { "x-editor-token": d.token } }, (r) => {
+      if (r.statusCode !== 200) { r.resume(); return retry(); }
+      d.sse++;
+      tries = 0;
+      let buf = "", ended = false;
+      r.setEncoding("utf8");
+      r.on("data", (chunk) => {
+        buf += chunk;
+        for (let i; (i = buf.indexOf("\n\n")) >= 0;) {
+          const block = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const type = /^event: (.*)$/m.exec(block)?.[1], data = /^data: (.*)$/m.exec(block)?.[1];
+          if (type && data) send(type, data);
+        }
+      });
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        d.sse--;
+        d.last = Date.now();
+        if (!stopped) { send("gone", "{}"); retry(); }
+      };
+      r.on("end", end); r.on("aborted", end); r.on("error", end); r.on("close", end);
+    });
+    up.on("error", retry);
+  }
+  connect();
+  return { stop() { stopped = true; up?.destroy(); } };
+}
+async function readJson(req) {
+  let s = "";
+  for await (const c of req) { s += c; if (s.length > 10000) throw new Error("body too large"); }
+  return s ? JSON.parse(s) : {};
 }
 
 /* ---- HTTP ------------------------------------------------------------------------------------- */
@@ -251,6 +331,20 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/ping") return json(res, 200, { ok: true, front: true });
     if (p === "/api/login-link") return json(res, 200, { url: loginUrl(loginCode(3600000), url.searchParams.get("next") || "/") });
     if (p === "/api/decks") return json(res, 200, { decks: deckList() });
+    if (p === "/events" && req.method === "GET") {
+      const id = url.searchParams.get("stream") || "";
+      return /^[\w-]{8,64}$/.test(id) ? eventStream(res, id) : text(res, 400, "Bad stream");
+    }
+    if (p === "/events/subscribe" && req.method === "POST") {
+      const b = await readJson(req);
+      const st = streams.get(String(b.stream));
+      const tab = String(b.tab || "");
+      if (!st || !/^\d{1,9}$/.test(tab)) return json(res, 404, { error: "No such stream." });
+      st.tabs.get(tab)?.stop();
+      st.tabs.delete(tab);
+      if (b.on && /^[\w.-]+$/.test(String(b.deck))) st.tabs.set(tab, follow(st, tab, String(b.deck)));
+      return json(res, 200, {});
+    }
 
     const m = /^\/d\/([\w.-]+)(\/.*)?$/.exec(p);
     if (!m) return text(res, 404, "Not found");
@@ -271,7 +365,8 @@ const server = http.createServer(async (req, res) => {
     catch (e) { return page(res, 502, "PinDeck could not open this deck", `<pre>${esc(e.message)}</pre><p><a href="/">All decks</a></p>`); }
     return proxy(req, res, d, m[2] + url.search);
   } catch (e) {
-    if (!res.headersSent) text(res, 500, String(e.message || e));
+    const bad = e instanceof SyntaxError || e instanceof URIError || e.message === "body too large";
+    if (!res.headersSent) text(res, bad ? 400 : 500, String(e.message || e));
   }
 });
 
