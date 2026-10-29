@@ -65,21 +65,16 @@ jobs:
           uname -srm && node --version && git --version
           echo "Chrome for tests: ${PINDECK_TEST_CHROME:-none}"
       # each failing test also becomes an annotation (its name and error), shown on the run's page and in
-      # pull requests without opening the log
+      # pull requests without opening the log (.github/tap-annotations.mjs)
       - name: Tests (details printed with each failure; a stuck test fails after 5 minutes)
+        env:
+          PINDECK_TEST_CHROME: ""   # the real-Chrome tests run next, on their own
         run: |
           set -o pipefail   # the tests' exit status, not tee's
-          node --test --test-reporter=tap --test-timeout=300000 2>&1 | tee tap.txt || {
-            node -e '
-              const lines = require("fs").readFileSync("tap.txt", "utf8").split("\n");
-              lines.forEach((l, i) => {
-                const m = /^(\s*)not ok \d+ - (.*)$/.exec(l);
-                if (!m || m[1]) return;   // top-level tests only
-                const rest = lines.slice(i + 1, i + 60), end = rest.findIndex((x) => /^(not )?ok \d+ /.test(x));
-                const body = (end < 0 ? rest : rest.slice(0, end)).join("\n");
-                const err = /error: (?:\|-?\n)?([\s\S]*?)\n\s*(code|failureType|stack|expected|actual|operator):/.exec(body)?.[1] || body;
-                const msg = err.replace(/^\s+/gm, "").slice(0, 900).replace(/%/g, "%25").replace(/\r?\n/g, "%0A");
-                console.log(`::error title=${m[2].replace(/[:,]/g, " ").slice(0, 200)}::${msg}`);
-              });'
-            exit 1
-          }
+          node --test --test-reporter=tap --test-timeout=300000 2>&1 | tee tap.txt || { node .github/tap-annotations.mjs tap.txt; exit 1; }
+      # with the runner's real Chrome, after the other tests: a cold Chrome start among dozens of PinDeck servers
+      # that tests start at the same time could miss its 25 s
+      - name: Real Chrome tests (screenshots, headless layout, PDF export)
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap --test-timeout=300000 --test-name-pattern="Real Chrome" test/server.test.mjs 2>&1 | tee tap-chrome.txt || { node .github/tap-annotations.mjs tap-chrome.txt; exit 1; }
