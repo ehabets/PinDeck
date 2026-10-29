@@ -575,6 +575,10 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   - Large decks get their ids in linear time; symlinked decks; a deck that is gone; Chrome's own errors,
     and `--no-sandbox` as root; a warning when PinDeck 2 writes to the same state folder.
   - On a Mac, Enter in the terminal opens PinDeck in the browser.
+  - From the code review: locked paths regardless of case (macOS) and `.git/config` restored after each
+    turn; Codex reads PDFs of a deck reached through a symlink; "not signed in" only when Claude says so;
+    betas tested before they are staged; model lists shared between decks; a faster deck list; smaller
+    status updates; asset roots read alike by the front and the deck servers.
 
 * **3.1.0-beta.1**: several decks on one port, and screenshots you can open from the chat.
   - A deck menu: click the deck's name above the slide to open another deck from its folder or the
