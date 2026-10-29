@@ -886,6 +886,22 @@ test("New chat keeps Undo and Redo; undoing a change from before the conversatio
   assert.doesNotMatch(sent, /changed outside this chat/, "an undo is not an outside edit");
 });
 
+test("An undone change stays marked undone in the chat after a restart; the status names the change Undo takes back", async (t) => {
+  const fx = fixture(t);
+  let s = await startServer(t, fx);
+  assert.equal((await s.api("message", { text: "please edit theme" })).status, 200);
+  await waitFor(async () => !(await s.api("status")).data.busy && chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  const id = chatOf(fx).find((e) => e.kind === "turn").turnId;
+  assert.equal((await s.api("status")).data.undoId, id);
+  assert.equal((await s.api("undo", {})).status, 200);
+  assert.equal((await s.api("status")).data.undoId, null);
+  await waitFor(() => chatOf(fx).find((e) => e.kind === "turn").undone === true, "the mark saved");
+  await s.killAll();
+  s = await startServer(t, fx);
+  assert.equal(chatOf(fx).find((e) => e.kind === "turn").undone, true);
+  assert.equal((await s.api(`turn/${id}/diff`)).status, 404, "its diff ended with the run (the editor shows no Diff button)");
+});
+
 test("Decks in one folder: a turn leaves out the other decks, and what another deck's assistant wrote meanwhile", async (t) => {
   const fx = fixture(t);
   const talk = path.join(fx.deck, "talk.html");

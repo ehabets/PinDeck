@@ -541,7 +541,7 @@ const status = () => ({ busy: state.busy, switching: state.switching, preparing:
   running: !!session?.running, provider: settings.provider, models: catalog, deck: DECK_DIR, deckFile: DECK_FILE,
   chrome: CAPS.screenshot.available, slideSelector: deckNow.selector, deckProblem: deckNow.problem,
   capabilities: publicCapabilities(CAPS), rev: deckRev(),
-  undo: changeLabel(liveTurns().at(-1)), redo: changeLabel(state.redo.at(-1)) });
+  undo: changeLabel(liveTurns().at(-1)), undoId: liveTurns().at(-1)?.id ?? null, redo: changeLabel(state.redo.at(-1)) });
 const pushStatus = () => broadcast("status", status());
 
 const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md"), "utf8")
@@ -1193,6 +1193,11 @@ function conflict(res, direction, files) {
     error: `${files.join(", ")} changed since then (edited outside PinDeck?), so ${direction === "undo" ? "Undo" : "Redo"} was not done: ` +
       `it would overwrite those changes. Reload to see the files as they are.` });
 }
+/* The chat entry of a change keeps whether it is undone: the undo history ends with the run, the chat does not */
+function markUndone(t) {
+  const e = state.chat.find((x) => x.turnId === t.id && (x.kind === "turn" || x.kind === "edit"));
+  if (e) { e.undone = t.undone; saveChat(); }
+}
 // an assistant turn made in the conversation going on now (not before a new chat or a provider switch)
 const byThisChat = (t) => t.conversation === state.conversation;
 function undo(res) {
@@ -1205,6 +1210,7 @@ function undo(res) {
   for (const { rel, data } of t.deletedFiles || []) writeDeckFile(rel, data, false);   // files deleted with an element come back too
   for (const { rel } of t.addedFiles || []) removeDeckFile(rel);   // imported figures go
   t.undone = true;
+  markUndone(t);
   state.redo.push(t);
   const names = t.files.map((f) => f.file);
   state.notes.push(t.kind === "manual"
@@ -1704,6 +1710,7 @@ const server = http.createServer(async (req, res) => {
       for (const { rel } of t.deletedFiles || []) removeDeckFile(rel);
       for (const { rel, data } of t.addedFiles || []) writeDeckFile(rel, data, false);
       t.undone = false;
+      markUndone(t);
       state.notes.push(t.kind === "manual" ? `The user redid their hand edit: ${t.label}.`
         : byThisChat(t) ? `The user redid your change from turn ${t.id} after undoing it.`
         : `The user redid a change made before this conversation began (turn ${t.id}): ${t.files.map((f) => f.file).join(" and ")} as that change left ${t.files.length > 1 ? "them" : "it"}. Re-read before editing.`);

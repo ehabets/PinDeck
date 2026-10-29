@@ -656,6 +656,8 @@ function md(s) {
    an older one says so (see the error listener below). */
 const shotChip = (file, label = "") => `<button type="button" class="chip shot-chip" data-shot="${esc(file)}" title="Open the screenshot">` +
   `<img src="${BASE}shots/${encodeURIComponent(file)}" alt="" loading="lazy">${label ? ` ${esc(label)}` : ""}</button>`;
+// only the most recent change still in effect can be undone: it alone gets an Undo button
+const lastLive = () => state.status?.undoId;
 function entryHtml(e) {
   switch (e.kind) {
     case "user":
@@ -668,22 +670,23 @@ function entryHtml(e) {
     case "tool":
       return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.shot ? " " + shotChip(e.shot) : ""}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
     case "edit": {
-      const t = state.turns.get(e.turnId);
-      return `<span class="files ${t?.undone ? "undone" : ""}">✎ ${esc(e.label)}</span>
-        <button class="small" data-diff="${e.turnId}">Diff</button>
-        ${t && !t.undone ? `<button class="small" data-undo="${e.turnId}">Undo</button>` : t?.undone ? "<span>undone</span>" : ""}`;
+      const t = state.turns.get(e.turnId), undone = t ? t.undone : e.undone;
+      return `<span class="files ${undone ? "undone" : ""}">✎ ${esc(e.label)}</span>
+        ${t ? `<button class="small" data-diff="${e.turnId}">Diff</button>` : ""}
+        ${t && !t.undone && t.id === lastLive() ? `<button class="small" data-undo="${e.turnId}">Undo</button>` : undone ? "<span>undone</span>" : ""}`;
     }
     case "turn": {
-      const t = e.turnId ? state.turns.get(e.turnId) : null;
+      // a change from before PinDeck restarted: its undo history (and diff) ended with that run
+      const t = e.turnId ? state.turns.get(e.turnId) : null, undone = t ? t.undone : e.undone;
       const parts = [];
       if (e.error) parts.push(`<span class="warn">${esc(e.error)}</span>`);
       if (e.files?.length) {
-        parts.push(`<span class="files ${t?.undone ? "undone" : ""}">Changed ${e.files.map((f) =>
+        parts.push(`<span class="files ${undone ? "undone" : ""}" ${t ? "" : 'title="From before PinDeck restarted: no diff or undo any more"'}>Changed ${e.files.map((f) =>
           `${esc(f.file)} ` + (f.binary ? `<span class="add">(binary)</span>`
             : `<span class="add">+${f.added}</span> <span class="del">−${f.removed}</span>`)).join(", ")}</span>`);
-        parts.push(`<button class="small" data-diff="${e.turnId}">Diff</button>`);
-        if (t && !t.undone) parts.push(`<button class="small" data-undo="${e.turnId}">Undo</button>`);
-        if (t?.undone) parts.push("<span>undone</span>");
+        if (t) parts.push(`<button class="small" data-diff="${e.turnId}">Diff</button>`);
+        if (t && !t.undone && t.id === lastLive()) parts.push(`<button class="small" data-undo="${e.turnId}">Undo</button>`);
+        if (undone) parts.push("<span>undone</span>");
       } else if (!e.error) parts.push("No file changes");
       if (e.restored?.length) parts.push(`<span class="warn">${esc(e.restored.join(", "))} is locked; the change was reverted.</span>`);
       if (e.denials?.length) parts.push(`<span class="warn" title="PinDeck lets the assistant run only its own commands (layout, shot, slides, pdf) and edit ${esc(state.status?.deckFile || "index.html")}, theme.css and the deck's other files, never brand.css">` +
@@ -860,7 +863,9 @@ document.addEventListener("keydown", (e) => {
 /* ---- Server events ---------------------------------------------------------------------------------- */
 let shownProblem = null;   // the deck problem last shown, so a status update does not repeat it
 function applyStatus(s) {
+  const undoMoved = s.undoId !== state.status?.undoId;
   state.status = s;
+  if (undoMoved) rerenderTurns();   // the Undo button moves to the change that is now the most recent
   // the deck's name in the header ("ocean-example", or "talk.html" for a named deck file), its full path on hover
   if (s.deck) {
     const folder = s.deck.split(/[\\/]/).filter(Boolean).pop() || s.deck;
@@ -955,7 +960,8 @@ function connect() {
       scrollChat();
     },
     chat(e) {
-      if ((e.kind === "turn" || e.kind === "edit") && e.turnId) state.turns.set(e.turnId, { id: e.turnId, undone: false });
+      const change = (e.kind === "turn" || e.kind === "edit") && e.turnId;
+      if (change) state.turns.set(e.turnId, { id: e.turnId, undone: false });
       renderEntry(e);
       scrollChat();
     },
