@@ -10,11 +10,11 @@
    - answers `cli.mjs layout|shot|slides|pdf|pdf-figure` for the assistant's self-checks, exports and PDF figures
    - exports the deck as a PDF handout or a PDF presentation (build steps on separate pages)
    - stores figures and audio attached to chat messages in <deck>/figures/ for the assistant to use, and attached
-     PDFs (papers, reports, figures) in ~/.pindeck, outside the deck
+     PDFs (papers, reports, figures) in ~/.pindeck-v3, outside the deck
    - imports slides from PowerPoint files in the deck's own layouts
    Listens on 127.0.0.1 only; the editor, the deck and every API call need the per-run token (a login
    cookie in the browser, a header for the CLI).
-   Runtime files (chat, screenshots, backups) live in ~/.pindeck, never in the deck or the package. */
+   Runtime files (chat, screenshots, backups) live in ~/.pindeck-v3, never in the deck or the package. */
 
 import http from "node:http";
 import { EventEmitter } from "node:events";
@@ -1233,7 +1233,7 @@ function undo(res) {
 /* ---- PowerPoint import -----------------------------------------------------------------------------
    Upload: the file is read at once (slide list for the dialog); in the background PowerPoint or Keynote
    makes a PDF of it, from which come the thumbnails and, on import, the pictures of diagrams.
-   Only the latest upload is kept, in ~/.pindeck/decks/<deck>/imports/. */
+   Only the latest upload is kept, in ~/.pindeck-v3/decks/<deck>/imports/. */
 const IMPORT_DIR = path.join(STATE_DIR, "imports");
 const IMPORT_MAX = 500 * 1024 * 1024;
 let lastImport = null;   // { id, name, dir, model, render: Promise<pdf path | null>, renderError }

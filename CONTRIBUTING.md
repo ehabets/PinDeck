@@ -39,7 +39,7 @@ than failing when used.
 
 Useful while developing:
 
-* `PINDECK_HOME=/tmp/pindeck-dev` keeps chat history, backups and settings away from your own `~/.pindeck`.
+* `PINDECK_HOME=/tmp/pindeck-dev` keeps chat history, backups and settings away from your own `~/.pindeck-v3`.
 * Work on a copy of a deck (`cp -R ocean-example /tmp/deck`) when you try things that change it.
 * `--port` runs a second PinDeck next to your usual one; `CLAUDE_BIN` and `CHROME_BIN` point to other binaries.
 
@@ -50,9 +50,10 @@ Useful while developing:
 * **Edit the deck as text.** PinDeck changes only the attribute, style or element it means to and
   leaves the rest of the file exactly as it was (see `lib/eids.mjs`). New code that writes to a deck
   should do the same.
-* **Keep backend permissions narrow.** Both backends may edit only `index.html` and `theme.css`.
-  Claude uses allowlisted native tools and `cli.mjs`; Codex uses PinDeck’s restricted tool bridge; `brand.css` is locked. The server listens on 127.0.0.1 only and every API call needs
-  the per-run token. Changes that widen any of this need a good reason in the pull request.
+* **Keep backend permissions narrow.** Both backends may edit and create the deck folder's files, never
+  `brand.css`, `vendor/`, `.git/` or other decks in the folder. Claude uses allowlisted native tools and `cli.mjs`;
+  Codex uses PinDeck’s restricted tool bridge; `brand.css` is locked. The server listens on 127.0.0.1 only, every
+  API call needs the per-run token, and deck pages run sandboxed, with no access to either. Changes that widen any of this need a good reason in the pull request.
 * **Match the code around it:** short functions, comments that say why, plain wording in the UI and
   the README.
 * **Document what users see.** Update the README: the "Working with it" table for new actions, "Current
@@ -106,7 +107,7 @@ Then check your change by hand before you open a pull request:
    edits the deck) and go through what your change touches, for example:
    * select, move, resize and nudge an element, then undo and redo;
    * edit text (also math, a table cell, and Enter in a bullet) and speaker notes;
-   * pin elements and send a message; check the layout with `node cli.mjs layout <slide> --issues`;
+   * pin elements and send a message; check the layout with `node cli.mjs layout <slide> --issues` (in the deck's folder, or with `--deck <deck>`);
    * add, duplicate, hide, move and delete slides;
    * export a handout and a presentation PDF;
    * import slides from a PowerPoint file, if you changed `lib/pptx*.mjs`, `lib/omml.mjs` or `lib/zip.mjs`.

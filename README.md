@@ -57,14 +57,15 @@ Use `npx pindeck@latest /path/to/deck` for the stable release; the beta channel 
 Releases, with notes for each beta, are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 Then open the login link PinDeck prints (`PinDeck: http://127.0.0.1:5180/login?code=...`). It works
-once and logs this browser in; for a new one, run `pindeck login` (or `node front.mjs login`).
+once and logs this browser in; for a new one, run `pindeck login` (or `node front.mjs login`). On a Mac,
+pressing Enter in the terminal where PinDeck runs opens a new link in your default browser.
 
-The deck is a file (`pindeck path/to/talk.html`) or a folder, which opens its `index.html`; without
-one, the current folder. Several decks can share a folder, each with its own chat and undo history;
+The deck is an `.html` file (`pindeck path/to/talk.html`) or a folder, which opens its `index.html`;
+without one, the current folder. Several decks can share a folder, each with its own chat and undo history;
 they share the folder's `theme.css` and `brand.css`, and the assistant edits only the deck that is open.
 PinDeck adds element ids to the deck file when it opens it (see below), so try it on a copy of a deck
 first. Options: `--port 5180`, `--provider claude|codex`, `--model <name>` (for this run only; otherwise the
-model in `~/.pindeck-v3/config.json`), `--asset-root <folder>` (see [Files outside the deck folder](#files-outside-the-deck-folder)),
+deck's own choice, see [Models, providers and configuration](#models-providers-and-configuration)), `--asset-root <folder>` (see [Files outside the deck folder](#files-outside-the-deck-folder)),
 `--help`. Runtime files (chat history, screenshots, backups) are kept in `~/.pindeck-v3/` (change with
 `PINDECK_HOME`), not in the deck. `ocean-example/` is a complete example deck to start from.
 
@@ -75,9 +76,16 @@ the asset roots, and in their folders one level down (`lecture/index.html`). A d
 tab, or with ⌘-click in a new one, on the same port and login, so one SSH tunnel serves them all. Each keeps
 its own chat and undo history while it is open, and the assistant finishes a turn in a deck you leave. A
 file PinDeck cannot open is greyed out with the reason; listing a deck changes nothing, and only opening it
-adds its element ids. Started with a folder that has no `index.html`, PinDeck shows the list of its decks.
-A deck with no editor open for 30 minutes is closed (its undo history goes, as on a restart) and opens
-again when you choose it.
+adds its element ids. Symlinked decks and folders are listed too; a deck file that links to a deck in
+another folder is greyed out (open that deck itself). Started with a folder that has no `index.html`,
+PinDeck shows the list of its decks. A deck with no editor open for 30 minutes is closed (its undo history
+goes, as on a restart) and opens again when you choose it. Open as many decks in as many tabs as you like:
+the tabs of a browser share one connection for their live updates.
+
+A deck is open in one PinDeck at a time: started again for a deck that another PinDeck (another port, or
+`server.mjs` on its own) has open, PinDeck says where it is open and stops, so their chats and undo
+histories never overwrite each other. `pindeck login <deck>` and `cli.mjs` find the PinDeck that serves
+the deck, whichever port it runs on.
 
 ## Compatibility and requirements
 
@@ -234,7 +242,9 @@ additional model-generated summary. It excludes tool output, needs no extra infe
 sent with the first message to the new session. Earlier messages may be omitted. **Start fresh** sends
 no conversation digest; the assistant still receives PinDeck instructions and the current deck context.
 
-Settings are saved when changed in `~/.pindeck-v3/config.json` (or `$PINDECK_HOME/config.json`):
+Each deck keeps its own provider, model and effort with its conversation (in its `chat.json`), so a choice in
+one deck never moves another deck's conversation to another backend. The last choice is also saved in
+`~/.pindeck-v3/config.json` (or `$PINDECK_HOME/config.json`), as the start for decks that have none yet:
 
 ```json
 {
@@ -244,13 +254,22 @@ Settings are saved when changed in `~/.pindeck-v3/config.json` (or `$PINDECK_HOM
 }
 ```
 
-Legacy configuration without `provider` is interpreted as Claude. Unsupported effort choices are
-adjusted to the discovered model's default when starting. Provider-tagged chat/session records prevent
-one backend from resuming the other's IDs. `--provider` and `--model` override startup settings for
-that run; a later menu selection is saved. `CLAUDE_BIN` and `CODEX_BIN` override executable paths.
+Legacy configuration without `provider` is interpreted as Claude; a provider without a model gets that
+provider's default model. Once the backend has listed its models, a saved model it no longer offers gives way
+to its default model (the chat says so), and an effort the model does not offer to its saved or default one,
+before the first message. config.json is read again and merged whenever a choice is saved, so decks open at
+the same time keep each other's effort preferences. Provider-tagged chat/session records prevent one backend
+from resuming the other's IDs. `--provider` and `--model` override the deck's settings for that run; a
+`--provider` other than the deck's starts a new conversation (the chat says so), and the next run without it
+is back on the deck's own choice. A later menu selection is saved. `CLAUDE_BIN` and `CODEX_BIN` override
+executable paths. `CLAUDE_MODEL`, which PinDeck 2 read, is not used: PinDeck warns and names `--model`.
 
 The v3 preview defaults to **`~/.pindeck-v3`**, keeping v2 settings and conversations separate. It does
-not copy the v2 directory automatically. To run both versions at once, use another port, for example:
+not copy the v2 directory automatically; `config.json` and `decks/*/chat.json` can be copied over by hand
+(asset roots too: they are in config.json). Never give both versions the same `PINDECK_HOME`: they keep files
+of the same names in different formats and overwrite each other's settings and chats. PinDeck 3 warns at
+start when its folder holds a chat that PinDeck 2 wrote. To run both versions at once, use another port, for
+example:
 
 ```bash
 node front.mjs /path/to/a/deck-copy --port 5183 --provider codex
@@ -261,16 +280,17 @@ node front.mjs /path/to/a/deck-copy --port 5183 --provider codex
 Claude uses its native Read/Edit tools with PinDeck's narrow allowlist, safe mode, and no inherited
 MCP configuration. Codex runs with a read-only sandbox, command execution disabled, and no approval
 grants. Inherited MCP servers and plugins are disabled in the thread configuration. Codex receives
-three host-controlled tools: `pindeck_read`, `pindeck_edit`, and `pindeck_command`.
-Only `index.html` and `theme.css` can be edited. Linked writable files and paths outside the allowed
-roots are rejected. Commands are restricted to PinDeck's layout, shot, slides, pdf and pdf-figure
-helpers, executed with argument arrays rather than a shell. `brand.css` also retains the server's
-post-turn restoration safeguard.
+four host-controlled tools: `pindeck_read`, `pindeck_edit`, `pindeck_write` and `pindeck_command`.
+Both assistants may edit and create the files of the deck folder: the deck file, `theme.css` and its other
+files. Never `brand.css`, `vendor/`, `.git/`, or the other decks in the folder (its other `.html` files, and
+subfolders that hold a deck of their own). Linked writable files and paths outside the allowed roots are
+rejected. Commands are restricted to PinDeck's layout, shot, slides, pdf and pdf-figure helpers, executed
+with argument arrays rather than a shell. `brand.css` also retains the server's post-turn restoration safeguard.
 
 Codex reads text, PNG/JPEG/WebP/GIF images and screenshots through the bridge. SVG is read as text.
-Attached PDFs are handled page by page using PDFKit on macOS: extracted text plus a rendered page image.
-PDF reading/rendering through this bridge is currently macOS-only. Audio is embedded by path and is
-not transcribed. Read operations have a 12 MB limit; long text can be read in chunks.
+Attached PDFs are handled page by page: a rendered page image (PDFKit on macOS, Poppler on Linux), plus the
+page's text on macOS. Audio is embedded by path and is not transcribed. Read operations have a 12 MB limit;
+long text can be read in chunks.
 
 ### Files outside the deck folder
 
@@ -283,6 +303,8 @@ exports. Claude may read those files but does not edit them.
 Symlinks: PinDeck serves a file only if, with symlinks followed, it lies inside the deck folder or an
 asset root. A symlink in the deck that leads anywhere else is refused (403). To use a symlinked
 library folder, add the folder it points to as an asset root; it does not have to contain the deck.
+PinDeck never writes or deletes through a symlink out of the deck folder: with a `figures/` or `export/`
+that links elsewhere, uploads, exports and deleting a picture's file are refused with the reason.
 
 ## Running on a Linux server (beta)
 
@@ -312,7 +334,7 @@ message twice. If PinDeck restarts, the editor asks you to log in again: run `no
 path/to/deck` on the server for a new link.
 
 Other users of a shared server cannot open the editor or read the deck through PinDeck: the token that
-protects it is only in your browser's cookie and in PinDeck's own files in `~/.pindeck` (readable only by
+protects it is only in your browser's cookie and in PinDeck's own files in `~/.pindeck-v3` (readable only by
 you), never in a page or on a command line.
 
 What works on Linux in this beta: editing by hand, speaker notes, slides, pins, the chat with Claude or Codex,
@@ -331,9 +353,12 @@ Without them the editor says what is missing (hover over "Server: Linux (beta)")
 which commands are not available. LibreOffice may draw some slides a little differently from PowerPoint;
 the pictures are references and figures, the slides themselves are rebuilt from the file. Chromium from snap may not be
 allowed to use hidden folders in your home folder such as `~/.pindeck-v3`; if screenshots fail with it, set
-`PINDECK_HOME` to a folder that is not hidden, or install Chrome or Chromium from a package.
+`PINDECK_HOME` to a folder that is not hidden (not the one PinDeck 2 uses), or install Chrome or Chromium from
+a package. Run as root (in a container, say), PinDeck starts Chrome with `--no-sandbox`, which Chrome needs
+there; a screenshot or PDF that fails gives Chrome's own reason.
 
-Run one PinDeck per deck. While PinDeck or the assistant is working on a deck, do not edit it with other tools
+One PinDeck serves all your decks on one port, and a deck can be open in only one PinDeck at a time (a
+second one says where it is open). While PinDeck or the assistant is working on a deck, do not edit it with other tools
 or switch git branches at the same time. Stop first, or wait until the assistant has finished. PinDeck notices
 changes made by other programs and reloads, and it refuses Undo, Redo or an edit that would overwrite
 them. Its checks cannot rule out every race with a program that writes at the same moment.
@@ -361,10 +386,10 @@ show and commit as usual. Clones without the filter configured simply see the fi
 | Undo, redo | `⌘Z` / `⇧⌘Z` or the toolbar arrows. One history for your hand edits and the assistant's changes. |
 | Pin elements | Press `P` (or the Pin button), click elements; each click gets a number. Click a marker to remove it, `Esc` to stop. |
 | Ask the assistant | Write in the sidebar and refer to pins by number: "1: align with 2, make 3 smaller". The selected element is sent too, so "make this smaller" works. `Enter` sends, `Shift+Enter` adds a new line. |
-| Visual questions | **+** in the chat, then **Screenshot**: the current slide with its pin markers is attached when you send. |
-| Review | Each answer ends with the changed files, a **Diff** button and an **Undo** button (most recent change). |
-| Stop | **Stop** interrupts the assistant; the conversation continues. **New chat** starts over. |
-| New slide | **＋ New slide** above the slide list: a **content slide** (title and bullets), a **section divider**, or a **duplicate** of the current slide. It is added after the current slide, modelled on the deck's own slides, and its title opens for typing. |
+| Visual questions | **+** in the chat, then **Screenshot**: the current slide with the pins of that message is attached when you send. If Chrome cannot take it, the assistant is told. **Stop** during the screenshot stops at once. |
+| Review | Each answer ends with the changed files and a **Diff** button; the most recent change still in effect also has an **Undo** button. After a restart, earlier changes keep their *undone* mark but have no Diff or Undo (the undo history ends with the run). |
+| Stop | **Stop** interrupts the assistant; the conversation continues. **New chat** starts a new conversation; your slides, Undo and Redo stay as they are. |
+| New slide | **＋ New slide** above the slide list: a **content slide** (title and bullets), a **section divider**, or a **duplicate** of the current slide. It is added after the current slide, modelled on the deck's own slides; a new content slide or divider opens its title for typing. |
 | Import from PowerPoint | **＋ New slide** → **Import from PowerPoint…**, then choose a `.pptx` file and tick the slides you want (hidden PowerPoint slides start unticked). They are added after the current slide in this deck's own layouts, and the assistant can improve the complex ones; see [PowerPoint import](#powerpoint-import). `⌘Z` removes them again, with their figures. |
 | Speaker notes | The **Notes** field under the slide shows the current slide's notes (the speaker view, `S`, shows them when presenting). Type to change them; they are saved when you click elsewhere or press `⌘Enter`, and `Esc` puts back what was there. A slide without notes gets them; emptying the field removes them. Notes with formatting other than line breaks are edited as HTML. Drag the line above the notes to give them more or less room (double-click it for the default size); collapse them with their header. |
 | Move a slide | Drag it up or down in the slide list; an orange line shows where it will go. It moves with its notes and the comment above it, and `⌘Z` puts it back. Slides inside vertical stacks cannot be moved yet. |
@@ -373,10 +398,12 @@ show and commit as usual. Clones without the filter configured simply see the fi
 | Attach figures and audio | **+** in the chat, then **File…**, drag and drop onto the chat or a slide, or paste an image. Files are saved in `<deck>/figures/` straight away; audio also gets a waveform SVG. Then ask the assistant, e.g. "put this figure on a new slide after 4". Removing an attachment before sending deletes the file again. |
 | Attach a PDF | The same way: a figure or table to take over, or a paper or report with more details. PDFs stay outside the deck (in `~/.pindeck-v3`); the assistant reads them, rebuilds tables as HTML, and renders a figure (a page or a cropped part of one) into `<deck>/figures/` as PNG with `cli.mjs pdf-figure` (macOS, or Linux with Poppler). E.g. "put Fig. 3 of this paper on slide 7" or "add the results of Table 2 to slide 9". |
 | Export PDF | **Export ▾** in the toolbar. **Handout PDF**: one page per slide, build steps shown complete. **Presentation PDF**: one page per click, so a slide with two build steps gives three pages. Files go to `<deck>/export/`. Needs Chrome or Chromium. |
-| Navigate | Slide list, `←` `→`, or the toolbar. **Present** opens the deck in a new tab. |
+| Navigate | Slide list, `←` `→`, or the toolbar. **Present** opens the deck in a new tab, at the current slide. |
+| Check from a terminal | `node cli.mjs layout 3 --issues`, `slides`, `shot 3` or `pdf handout`, in the deck's folder (or with `--deck <folder or file.html>`): asks the PinDeck that serves the deck. |
 
 You can also edit `index.html` or `theme.css` in any editor; the slide reloads, and the assistant is told
-the files changed. CSS changes are swapped in without a reload.
+the files changed. CSS changes are swapped in without a reload. Typing in the slide is not lost meanwhile:
+when you finish, PinDeck refuses to save it over the other change and offers the text to copy.
 
 ## PowerPoint import
 
@@ -425,7 +452,15 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * **One port, a server per deck.** `pindeck` starts the front (`front.mjs`): it holds the port, the login
   and the deck list, and serves each open deck at `/d/<deck>/`. Every deck runs its own deck server
   (`server.mjs`) on a private port of 127.0.0.1 with a token of its own; the front passes each request on
-  with that token. A deck's server, its assistant and its undo history are those of that deck alone.
+  with that token. A deck's server, its assistant and its undo history are those of that deck alone. The
+  editor tabs of a browser share one event stream from the front (a shared worker), since browsers open
+  only six connections to one port; if a deck server stops, the front opens the deck again and the tab
+  catches up. Each PinDeck process notes its address in `~/.pindeck-v3/servers/` for `pindeck login` and
+  `cli.mjs`, and a deck server holds its deck's `open.json`, so a deck opens in one PinDeck only.
+* **Deck pages are sandboxed.** The deck page (in the editor's frames, and in Present) runs with a sandbox
+  policy in an origin of its own, at a per-run address that serves the deck's files and nothing else. A
+  script in a deck, a template, or written by the assistant cannot reach the login cookie, the API, the
+  chat or other decks. The editor and its bridge in the slide frame talk by `postMessage`.
 * **Element ids.** On start, the server gives every slide and every visible element a readable
   `data-eid` attribute (`summary`, `summary/callout`, `summary/li-2`). Only the attribute is
   inserted; the rest of the file stays as it was. A backup of the file before the first change is
@@ -461,13 +496,15 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   so no allow rule in your own, the deck's or a parent folder's settings widens this. Codex has no shell
   and no file access of its own: it reads and edits through PinDeck's own tools, which apply the same
   rules and refuse symlinks out of the deck. If `brand.css` changes during a turn anyway, the server
-  restores it and says so in the chat.
+  restores it and says so in the chat. Subfolders that hold a deck of their own count as other decks.
 * **Undo.** The server keeps a copy of every file a change touched, from before and after it (an AI
   turn, which may change, create or delete several files of the deck, or a hand edit). Files over 2 MB
   are not copied: the chat says when a turn changed one, and Undo leaves it as it is. Hidden files,
   `vendor/` and `export/` are not part of undo. Undo and redo walk that history and tell the assistant on
   the next message. They first check that the files are still as that change left them; if something
   else changed them since, they do nothing and say which file differs, rather than overwrite that work.
+  Decks that share a folder share its files: while another deck's assistant works there too, a turn keeps
+  only the files its own assistant said it wrote, and says which it left out.
 * **Saving.** Every file PinDeck writes into the deck is written to a temporary file next to it and then
   renamed into place, so other programs never see half a file. Each change from the editor carries the
   revision of the files it was made on; if the files have changed since, the change is refused, the
@@ -480,8 +517,9 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 | `front.mjs` | What `pindeck` starts (127.0.0.1 only, random token per run, one-time login links): the login, the deck list and one deck server per open deck at `/d/<deck>/`; `login`. |
 | `server.mjs` | The server for one deck: UI, deck files, events, backend session, undo, CLI endpoints. Behind the front, or on its own (`node server.mjs <deck>`). |
 | `lib/login.mjs`, `lib/deck-target.mjs`, `lib/deck-list.mjs` | Login links and cookies, which deck a path names (and its state folder), and the decks the menu lists. |
+| `lib/servers.mjs` | The PinDecks running for this user, and which one serves a deck (`pindeck login`, `cli.mjs`). |
 | `cli.mjs` | `layout`, `shot`, `slides`, `pdf handout` / `pdf presentation` and `pdf-figure` commands for the backends (and for you), and `git-setup`. |
-| `public/` | The editor page, and `bridge.js`, which is injected into the deck in edit mode (never saved to it). |
+| `public/` | The editor page; `bridge.js`, which is injected into the deck in edit mode (never saved to it); `events-worker.js`, the event stream the tabs of a browser share. |
 | `lib/pptx.mjs`, `lib/zip.mjs`, `lib/xml.mjs` | Reading `.pptx` files (no dependencies): slides, text, shapes and their positions, notes. |
 | `lib/pptx-import.mjs` | Turns PowerPoint slides into slides of the deck: figures, tables, build steps, audio, layout, HTML in the deck's style. |
 | `lib/waveform.mjs` | Waveform SVGs for imported audio. |
@@ -511,10 +549,30 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * The undo history lives on the server and starts fresh when PinDeck restarts, or when a deck closes after
   30 minutes without an open editor.
 * One writer at a time: PinDeck is not made for editing the same deck from two editors or tools at once.
+* A deck's own scripts run sandboxed in the editor and in Present: they cannot use `localStorage`, cookies
+  or the editor page. A deck that needs them for its slides to work should catch the error.
+* Decks are `.html` files; `.htm` files are not listed or opened as decks.
 * Linux (beta): pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server-beta)).
 
 ## Versions
+
+* **Next beta (on `v3.2.0-beta`)**: fixes from a code review and a round of user tests.
+  - Security: deck pages run sandboxed, so a deck's script can no longer use the API, read other decks or
+    send messages; the login link's `next` stays on PinDeck.
+  - Several decks in one folder: a turn no longer records or undoes another deck's files, and deleting a
+    picture keeps a file another deck uses. Subfolder decks are locked for the assistant.
+  - Each deck keeps its provider, model and effort; config.json is merged, not overwritten; unusable saved
+    settings are made usable before the first message.
+  - Many tabs on one port; a deck server that stops reconnects; `pindeck login` and `cli.mjs` find the right
+    PinDeck; a deck opens in one PinDeck only.
+  - Screenshots show the pins of their own message; Stop during a screenshot; failures reach the assistant.
+  - New chat keeps Undo; undone marks survive a restart; only the latest change offers Undo.
+  - A deck page that cannot start says why, and Send no longer hangs; typing survives an outside save; the
+    deck menu at every width; keyboard use of the model menus; Enter in a bullet leaves no copied ids.
+  - Large decks get their ids in linear time; symlinked decks; a deck that is gone; Chrome's own errors,
+    and `--no-sandbox` as root; a warning when PinDeck 2 writes to the same state folder.
+  - On a Mac, Enter in the terminal opens PinDeck in the browser.
 
 * **3.1.0-beta.1**: several decks on one port, and screenshots you can open from the chat.
   - A deck menu: click the deck's name above the slide to open another deck from its folder or the
