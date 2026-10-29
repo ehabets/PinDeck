@@ -41,8 +41,10 @@ test('Stop still terminates the original unresponsive turn', () => {
 });
 
 test('Stop cancels message preparation before a backend turn starts', () => {
-  const h = stopHarness({ turn: null, preparing: { cancelled: false } });
+  const controller = new AbortController();
+  const h = stopHarness({ turn: null, preparing: { cancelled: false, controller } });
   assert.equal(h.state.preparing.cancelled, true);
+  assert.equal(controller.signal.aborted, true, "the screenshot's Chrome is stopped too");
   assert.deepEqual(h.counts(), { stops: 0, interrupts: 0 });
 });
 
