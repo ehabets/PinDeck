@@ -15,14 +15,20 @@
 
    node cli.mjs git-setup [deck]    keep PinDeck's data-eid ids out of git (no server needed; a folder or deck file)
 
-   <slide> is a slide id (data-eid), a slide number (1-based) or "current". */
+   <slide> is a slide id (data-eid), a slide number (1-based) or "current". The assistant's commands reach its
+   own deck server (DECK_EDITOR_URL); run from a terminal, they reach the PinDeck that serves the deck in the
+   current folder (its index.html), or the deck named with --deck <folder | file.html>. */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { deckTarget, homeDir } from "./lib/deck-target.mjs";
+import { serverFor } from "./lib/servers.mjs";
 
-const [cmd, ...rest] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const deckAt = args.indexOf("--deck");
+const deckArg = deckAt >= 0 ? args.splice(deckAt, 2)[1] : null;
+const [cmd, ...rest] = args;
 const arg = rest[0];
 
 /* git-setup: a git "clean" filter strips PinDeck's data-eid attributes whenever git reads the deck's
@@ -68,13 +74,17 @@ function figureQuery(args) {
 
 let url = process.env.DECK_EDITOR_URL, token = process.env.DECK_EDITOR_TOKEN;
 if (!url || !token) {
-  try {
-    const home = process.env.PINDECK_HOME || path.join(os.homedir(), ".pindeck-v3");
-    const s = JSON.parse(fs.readFileSync(path.join(home, "server.json"), "utf8"));
-    url = s.url; token = s.token;
-  } catch {}
+  // from a terminal: the deck's own server if it is open, else a front that lists it (which opens it)
+  const deck = deckTarget(deckArg || process.cwd());
+  if (!fs.existsSync(path.join(deck.dir, deck.file))) {
+    console.error(`No ${deck.file} in ${deck.dir}: run this in a deck's folder, or name the deck with --deck <folder | file.html>.`);
+    process.exit(2);
+  }
+  const found = await serverFor(homeDir(), deck);
+  if (!found) { console.error(`No running PinDeck serves ${path.join(deck.dir, deck.file)} (start it with: pindeck ${deckArg || "."}).`); process.exit(1); }
+  ({ url, token } = found.own || found.front);
+  if (!found.own) url = `${url}/d/${deck.key}`;
 }
-if (!url) { console.error("The PinDeck server is not running (start it with: pindeck <deck-folder>)."); process.exit(1); }
 
 /* layout and shot take several slides, so the assistant needs no shell loop or pipe (which PinDeck refuses) */
 const queries = cmd === "pdf-figure" ? [figureQuery([...rest])]

@@ -25,6 +25,7 @@ import { isSupportedPlatform, detectCapabilities, publicCapabilities, parsePort 
 import { deckTarget, homeDir } from "./lib/deck-target.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
+import { registerServer, printLogin } from "./lib/servers.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
 const EDITOR_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -48,28 +49,9 @@ if (!isSupportedPlatform(process.platform)) {
   process.exit(0);
 }
 
-/* pindeck login: a new one-time login link from the running front, asked with the token in its server file
-   (readable only by this user). With a deck, the link opens that deck. A deck server started on its own
-   (node server.mjs) for that deck answers instead, as before the front. */
-const SERVER_FILE = path.join(HOME_DIR, "server.json");
-if (argv[0] === "login") {
-  const deck = argv[1] ? deckTarget(argv[1]) : null;
-  let info = null;
-  for (const f of [...(deck ? [path.join(HOME_DIR, "decks", deck.key, "server.json")] : []), SERVER_FILE]) {
-    try { info = JSON.parse(fs.readFileSync(f, "utf8")); break; } catch {}
-  }
-  if (!info) { console.error("No PinDeck is running."); process.exit(1); }
-  const next = deck && info.front ? `/d/${deck.key}/` : "/";
-  try {
-    const res = await fetch(`${info.url}/api/login-link?` + new URLSearchParams({ next }), { headers: { "x-editor-token": info.token } });
-    if (!res.ok) throw new Error(res.status);
-    console.log(`PinDeck (${deck ? path.join(deck.dir, deck.file) : info.deckDir}): ${(await res.json()).url}`);
-    process.exit(0);
-  } catch {
-    console.error(`The PinDeck at ${info.url} does not answer. Is it still running?`);
-    process.exit(1);
-  }
-}
+/* pindeck login: a new one-time login link from the PinDeck that serves the deck (see lib/servers.mjs), asked
+   with the token in its server file (readable only by this user). With a deck, the link opens that deck. */
+if (argv[0] === "login") await printLogin(HOME_DIR, argv[1] ? deckTarget(argv[1]) : null);
 
 /* The start deck, and the folders whose decks the menu offers. A folder without index.html opens the list
    of its decks; if it has none, its deck server says why, as for any deck that cannot be opened. */
@@ -117,7 +99,8 @@ function openDeck(entry, start = false) {
   decks.set(d.key, d);
   // its own process group: Ctrl+C reaches the front only, which then ends every deck once
   d.proc = spawn(process.execPath, [SERVER, entry.file === "index.html" ? entry.dir : path.join(entry.dir, entry.file),
-    "--port", "0", ...PASS], { env: { ...process.env, PINDECK_FRONT: "1" }, stdio: ["ignore", "pipe", "pipe", "ipc"], detached: true });
+    "--port", "0", ...PASS], { env: { ...process.env, PINDECK_FRONT: "1", PINDECK_FRONT_URL: ORIGIN },
+    stdio: ["ignore", "pipe", "pipe", "ipc"], detached: true });
   // what it says before it listens: its reason if it stops; the start deck's warnings once it runs
   let said = "";
   const held = [];
@@ -373,13 +356,10 @@ const server = http.createServer(async (req, res) => {
 /* ---- Start ----------------------------------------------------------------------------------------
    The port is bound first, then the start deck opens (its server checks it before writing anything). If it
    cannot, the front says why and stops: as before the front, nothing is written. */
+let removeServerInfo = () => {};
 function writeServerInfo() {
   fs.mkdirSync(HOME_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(SERVER_FILE, JSON.stringify({ url: ORIGIN, token: TOKEN, deckDir: START.dir, pid: process.pid, front: true }, null, 2), { mode: 0o600 });
-  fs.chmodSync(SERVER_FILE, 0o600);
-}
-function removeServerInfo() {
-  try { if (JSON.parse(fs.readFileSync(SERVER_FILE, "utf8")).token === TOKEN) fs.rmSync(SERVER_FILE, { force: true }); } catch {}
+  removeServerInfo = registerServer(HOME_DIR, { url: ORIGIN, token: TOKEN, deckDir: START.dir, front: true });
 }
 let listening = false;
 server.on("error", (e) => {

@@ -14,6 +14,7 @@ import { deckTarget } from "../lib/deck-target.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const FRONT = path.join(ROOT, "front.mjs");
+const CLI = path.join(ROOT, "cli.mjs");
 const FAKE_AGENT = path.join(ROOT, "test", "fixtures", "fake-agent");
 const EXAMPLE = path.join(ROOT, "ocean-example");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -102,10 +103,11 @@ test("Front: one login for several decks, each with its own server, opened when 
   const second = path.join(fx.talks, "second.html"), notes = path.join(fx.talks, "notes.html");
   const notesBefore = fs.readFileSync(notes, "utf8");
   const s = await startFront(t, fx);
-  const info = JSON.parse(fs.readFileSync(path.join(fx.home, "server.json"), "utf8"));
+  const serverFile = path.join(fx.home, "servers", `${s.child.pid}.json`);
+  const info = JSON.parse(fs.readFileSync(serverFile, "utf8"));
   assert.equal(info.front, true);
   assert.equal(info.url, s.url);
-  assert.equal((fs.statSync(path.join(fx.home, "server.json")).mode & 0o777), 0o600);
+  assert.equal((fs.statSync(serverFile).mode & 0o777), 0o600);
 
   // / opens the start deck
   const home = await s.get("/");
@@ -194,7 +196,7 @@ test("Front: one login for several decks, each with its own server, opened when 
   process.kill(s.child.pid, "SIGTERM");
   assert.equal((await s.exited).code, 0);
   await waitFor(() => pids.every((p) => !alive(p)), "the assistants to end");
-  assert.equal(fs.existsSync(path.join(fx.home, "server.json")), false);
+  assert.deepEqual(fs.readdirSync(path.join(fx.home, "servers")), [], "no server files left: the front's and its deck servers'");
 });
 
 test("Front: a folder without index.html lists its decks; the asset roots' decks too", async (t) => {
@@ -318,4 +320,45 @@ test("Front: a proxied event stream ends when its deck server stops", async (t) 
   await waitFor(() => events.list.some((e) => e.ev === "hello"), "hello");
   process.kill(serverPid(fx.talks), "SIGKILL");
   await Promise.race([events.done, new Promise((_, no) => setTimeout(() => no(new Error("the stream stayed open")), 5000))]);
+});
+
+test("Fronts side by side: login and cli.mjs find the PinDeck that serves the deck; one PinDeck per deck", async (t) => {
+  const fx = fixture(t);
+  const other = path.join(fx.root, "other talks");
+  fs.cpSync(path.join(ROOT, "ocean-example"), other, { recursive: true });
+  const a = await startFront(t, fx), b = await startFront(t, fx, [other]);
+  const run = (file, args, cwd = fx.root) => spawnSync(process.execPath, [file, ...args], { env: env(fx), encoding: "utf8", cwd });
+  const linkOf = (r) => /(http:\/\/127\.0\.0\.1:\d+)\/login\?code=[0-9a-f]+/.exec(r.stdout)?.[1];
+  // each deck's link from the front that serves it; without a deck, a link from each
+  assert.equal(linkOf(run(FRONT, ["login", fx.talks])), a.url);
+  assert.equal(linkOf(run(FRONT, ["login", other])), b.url);
+  assert.equal(run(FRONT, ["login"]).stdout.match(/login\?code=/g).length, 2);
+  // a deck no running PinDeck serves: said so, no link
+  for (const d of ["/etc", path.join(fx.root, "nowhere.html"), path.join(fx.talks, "lecture", "old", "older")]) {
+    const r = run(FRONT, ["login", d]);
+    assert.equal(r.status, 1, d);
+    assert.match(r.stderr, /^No running PinDeck serves /);
+    assert.equal(r.stdout, "");
+  }
+  // cli.mjs from a terminal: the deck in the current folder, or --deck; a deck not open yet is opened
+  const slides = run(CLI, ["slides"], fx.talks);
+  assert.equal(slides.status, 0, slides.stderr);
+  assert.match(slides.stdout, /^ 1  \S+/);
+  const named = run(CLI, ["slides", "--deck", path.join(fx.talks, "second.html")]);
+  assert.equal(named.status, 0, named.stderr);
+  await waitFor(() => /\[second\.html\] opened/.test(a.output()), "the deck opened by the front");
+  assert.match(run(CLI, ["slides"], path.join(fx.root)).stderr, /No index\.html in .*--deck/);
+  // one front stops: the other still answers; a file left by a PinDeck that is gone is ignored and removed
+  fs.writeFileSync(path.join(fx.home, "servers", "999999.json"), JSON.stringify({ pid: 999999, url: "http://127.0.0.1:1", token: "x", front: true }));
+  process.kill(b.child.pid, "SIGTERM");
+  await b.exited;
+  assert.equal(linkOf(run(FRONT, ["login"])), a.url);
+  assert.equal(fs.existsSync(path.join(fx.home, "servers", "999999.json")), false);
+  // the deck is open in front a: neither a second front nor a server on its own opens it too
+  const second = spawnFront(fx, [fx.talks, "--port", "0"]);
+  assert.equal((await second.exited).code, 1);
+  assert.match(second.output(), new RegExp(`index\\.html is open in another PinDeck already \\(${a.url}, process \\d+\\)`));
+  const alone = spawnSync(process.execPath, [path.join(ROOT, "server.mjs"), fx.talks, "--port", "0"], { env: env(fx), encoding: "utf8", timeout: 10000 });
+  assert.equal(alone.status, 1);
+  assert.match(alone.stderr, /is open in another PinDeck already/);
 });

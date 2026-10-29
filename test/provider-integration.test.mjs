@@ -18,8 +18,9 @@ test('HTTP model switching keeps the old session on failure and transfers contex
  let errors='';const child=spawn(process.execPath,[path.join(root,'server.mjs'),deck,'--port',String(port)],{env:{...process.env,PINDECK_HOME:home,CLAUDE_BIN:fake,CODEX_BIN:fake,FAKE_AGENT_LOG:logFile},stdio:['ignore','pipe','pipe']});
  child.stderr.on('data',d=>errors+=d);
  t.after(async()=>{child.kill('SIGTERM');await new Promise(r=>child.exitCode!==null?r():child.once('exit',r));fs.rmSync(tmp,{recursive:true,force:true});});
- await until(()=>fs.existsSync(path.join(home,'server.json')));
- const {token}=JSON.parse(fs.readFileSync(path.join(home,'server.json')));
+ const serverFile=path.join(home,'servers',`${child.pid}.json`);
+ await until(()=>fs.existsSync(serverFile));
+ const {token}=JSON.parse(fs.readFileSync(serverFile));
  const api=async(url,body)=>{const r=await fetch(`http://127.0.0.1:${port}/api/${url}`,{method:body===undefined?'GET':'POST',headers:{'x-editor-token':token,'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};};
  await until(async()=>{if(child.exitCode!==null)throw new Error(errors);try{return (await api('ping')).status===200;}catch{return false;}});
  const models=await api('models');assert.equal(models.data.claude.models.length,2);assert.equal(models.data.codex.models.length,2);

@@ -41,12 +41,13 @@ import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
 import { deckTarget, homeDir } from "./lib/deck-target.mjs";
 import { listDecks } from "./lib/deck-list.mjs";
+import { registerServer, printLogin, alive } from "./lib/servers.mjs";
 import { goodHost, LOGIN_PAGE, createLogin } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
 /* ---- Config ------------------------------------------------------------------ */
-/* Started by the front (pindeck, front.mjs) for one of the decks it serves: the front logs browsers in,
-   prints the links and owns ~/.pindeck-v3/server.json; this server tells it its address over IPC. */
+/* Started by the front (pindeck, front.mjs) for one of the decks it serves: the front logs browsers in and
+   prints the links; this server tells it its address over IPC. */
 const FRONT = !!process.env.PINDECK_FRONT && !!process.send;
 const EDITOR_DIR = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -77,23 +78,8 @@ const STATE_DIR = path.join(HOME_DIR, "decks", deckKey);
 const SHOT_DIR = path.join(STATE_DIR, "shots");
 const SHOT_NAME = /^[\w-][\w.-]*\.png$/;   // a file name in SHOT_DIR, as the editor may ask for it
 const PDF_DIR = path.join(STATE_DIR, "attachments");   // attached PDFs: reading material, not part of the deck
-/* pindeck login: a new one-time login link from the running server, asked with the token in its server
-   file (readable only by this user) */
-if (LOGIN) {
-  const files = [path.join(STATE_DIR, "server.json"), ...(argv[0] ? [] : [path.join(HOME_DIR, "server.json")])];
-  let info = null;
-  for (const f of files) { try { info = JSON.parse(fs.readFileSync(f, "utf8")); break; } catch {} }
-  if (!info) { console.error(`No PinDeck is running${argv[0] ? ` for ${DECK_DIR}` : ""}.`); process.exit(1); }
-  try {
-    const res = await fetch(`${info.url}/api/login-link`, { headers: { "x-editor-token": info.token } });
-    if (!res.ok) throw new Error(res.status);
-    console.log(`PinDeck (${info.deckDir}): ${(await res.json()).url}`);
-    process.exit(0);
-  } catch {
-    console.error(`The PinDeck for ${info.deckDir} at ${info.url} does not answer. Is it still running?`);
-    process.exit(1);
-  }
-}
+/* pindeck login: a new one-time login link from the PinDeck that serves the deck (see lib/servers.mjs) */
+if (LOGIN) await printLogin(HOME_DIR, argv[0] ? deckTarget(argv[0]) : null);
 const TOKEN = crypto.randomBytes(16).toString("hex");
 /* The deck's pages are untrusted content: a deck (or a template, or a script the assistant wrote) must not
    reach the API, the chat or other decks. They are served with a sandbox policy, which gives them an origin
@@ -129,24 +115,38 @@ if (frameworkProblem) {
   console.error(frameworkProblem);
   process.exit(1);
 }
+/* One PinDeck per deck: two deck servers on one state folder would overwrite each other's chat and undo. The
+   one that has the deck open holds STATE_DIR/open.json; a second one says where the deck is open and stops,
+   before anything is written. */
+const LOCK_FILE = path.join(STATE_DIR, "open.json");
+const lockHolder = () => {
+  try { const o = JSON.parse(fs.readFileSync(LOCK_FILE, "utf8")); return o.pid !== process.pid && alive(o.pid) ? o : null; } catch { return null; }
+};
+const openElsewhere = (o) => `${path.join(DECK_DIR, DECK_FILE)} is open in another PinDeck already (${o.url}, process ${o.pid}). ` +
+  `Use that one, or stop it first: two PinDecks on one deck would overwrite each other's chat and undo.`;
+if (lockHolder()) { console.error(openElsewhere(lockHolder())); process.exit(1); }
 /* Runtime files hold the token, the chat and attachments: private to the user. Written only after the
-   port is bound (see Start), so a failed start leaves no state behind. */
-// the second: the CLI's fallback. Behind the front none: its own server.json leads pindeck login to the front
-// (a deck server's port is no use to a browser behind a tunnel), and the assistant's CLI gets this server's address.
-const SERVER_FILES = FRONT ? [] : [path.join(STATE_DIR, "server.json"), path.join(HOME_DIR, "server.json")];
+   port is bound (see Start), so a failed start leaves no state behind. The server file (lib/servers.mjs) lets
+   pindeck login and cli.mjs find this server; behind the front, login goes to the front (a deck server's port
+   is no use to a browser behind a tunnel), and the assistant's CLI gets this server's address. */
+let unregister = () => {};
 function writeServerInfo() {
   for (const d of [HOME_DIR, STATE_DIR, SHOT_DIR]) fs.mkdirSync(d, { recursive: true, mode: 0o700 });
-  const info = JSON.stringify({ url: ORIGIN, token: TOKEN, deckDir: DECK_DIR, pid: process.pid }, null, 2);
-  for (const f of SERVER_FILES) {
-    fs.writeFileSync(f, info, { mode: 0o600 });
-    fs.chmodSync(f, 0o600);
+  const lock = JSON.stringify({ pid: process.pid, url: process.env.PINDECK_FRONT_URL || ORIGIN });
+  try { fs.writeFileSync(LOCK_FILE, lock, { flag: "wx", mode: 0o600 }); }
+  catch (e) {
+    if (e.code !== "EEXIST") throw e;
+    const other = lockHolder();
+    if (other) throw Object.assign(new Error(openElsewhere(other)), { plain: true });
+    fs.writeFileSync(LOCK_FILE, lock, { mode: 0o600 });   // left by a PinDeck that is gone
   }
+  unregister = registerServer(HOME_DIR, { url: ORIGIN, token: TOKEN, key: deckKey, deckDir: DECK_DIR, deckFile: DECK_FILE,
+    ...(FRONT ? { behindFront: true } : {}) });
 }
-/* On exit: only our own server files, never those of a PinDeck started since for this or another deck. */
+/* On exit: only our own files, never those of a PinDeck started since for this or another deck. */
 function removeServerInfo() {
-  for (const f of SERVER_FILES) {
-    try { if (JSON.parse(fs.readFileSync(f, "utf8")).token === TOKEN) fs.rmSync(f, { force: true }); } catch {}
-  }
+  unregister();
+  try { if (JSON.parse(fs.readFileSync(LOCK_FILE, "utf8")).pid === process.pid) fs.rmSync(LOCK_FILE, { force: true }); } catch {}
 }
 
 /* ---- Small helpers --------------------------------------------------------------- */
@@ -1855,7 +1855,7 @@ server.listen(PORT, "127.0.0.1", () => {
     if (first.changed) console.log(`Added ${first.assigned.length} element ids to ${DECK_FILE} (backup in ${path.join(STATE_DIR, "backups")}).`);
     startWatcher();
   } catch (e) {
-    console.error(`PinDeck could not open the deck: ${e.message}`);
+    console.error(e.plain ? e.message : `PinDeck could not open the deck: ${e.message}`);
     removeServerInfo();
     process.exit(1);
   }

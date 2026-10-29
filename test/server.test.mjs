@@ -105,11 +105,7 @@ async function startServer(t, fx, opts = {}) {
   return { ...s, url, token, login, api, port: +new URL(url).port };
 }
 function serverInfo(fx, pid) {
-  const dir = path.join(fx.home, "decks");
-  for (const d of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
-    try { const info = JSON.parse(fs.readFileSync(path.join(dir, d, "server.json"), "utf8")); if (info.pid === pid) return info; } catch {}
-  }
-  return null;
+  try { return JSON.parse(fs.readFileSync(path.join(fx.home, "servers", `${pid}.json`), "utf8")); } catch { return null; }
 }
 /* Claude's deny rules: the arguments after --disallowedTools up to the next option */
 const denied = (argv) => {
@@ -211,8 +207,8 @@ for (const platform of ["linux", "darwin"]) {
 
     // runtime files are private
     const stateDir = path.join(fx.home, "decks", fs.readdirSync(path.join(fx.home, "decks"))[0]);
-    assert.equal(fs.statSync(path.join(stateDir, "server.json")).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(path.join(fx.home, "server.json")).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(fx.home, "servers", `${s.child.pid}.json`)).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(fx.home, "servers")).mode & 0o777, 0o700);
     assert.equal(fs.statSync(stateDir).mode & 0o777, 0o700);
     assert.ok(!s.output().includes(s.token), "the token is not logged");
 
@@ -365,7 +361,7 @@ test("SIGTERM: Claude gets end of input, the server exits and removes only its o
   assert.equal(r.code, 0);
   assert.ok(fakeLog(fx).some((e) => e.event === "eof" && e.pid === pid));
   await waitFor(() => !alive(pid), "claude to exit", 3000);
-  assert.equal(fs.existsSync(path.join(fx.home, "server.json")), false);
+  assert.equal(fs.existsSync(path.join(fx.home, "servers", `${s.child.pid}.json`)), false);
 });
 
 test("SIGTERM with a Claude that ignores end of input and SIGTERM: killed, bounded shutdown", async (t) => {
@@ -386,11 +382,10 @@ test("A second server for another deck keeps the first one's discovery file inta
   fs.cpSync(EXAMPLE, other, { recursive: true });
   const s1 = await startServer(t, fx);
   const s2 = await startServer(t, fx, { deck: other });
-  const global = path.join(fx.home, "server.json");
-  assert.equal(JSON.parse(fs.readFileSync(global, "utf8")).token, s2.token);
   s1.child.kill("SIGTERM");
   await s1.exited;
-  assert.equal(JSON.parse(fs.readFileSync(global, "utf8")).token, s2.token);
+  assert.equal(serverInfo(fx, s1.child.pid), null);
+  assert.equal(serverInfo(fx, s2.child.pid).token, s2.token);
 });
 
 test("Restart: a new token; the old one is refused (the editor reloads on 403)", async (t) => {
@@ -1078,7 +1073,7 @@ test("pindeck login prints a working link for the deck's server, and says so whe
   const env = { ...process.env, PINDECK_HOME: fx.home };
   const none = spawnSync(process.execPath, [SERVER, "login", fx.deck], { env, encoding: "utf8" });
   assert.equal(none.status, 1);
-  assert.match(none.stderr, /No PinDeck is running/);
+  assert.match(none.stderr, /No running PinDeck serves .*index\.html\./);
   const s = await startServer(t, fx);
   for (const args of [["login", fx.deck], ["login"]]) {
     const r = spawnSync(process.execPath, [SERVER, ...args], { env, encoding: "utf8" });
