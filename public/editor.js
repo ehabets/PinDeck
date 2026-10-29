@@ -187,7 +187,11 @@ const editorHost = {
     }, "Could not remove the bullet.");
   },
   refresh() { queueEdit(() => loadMain(), "Could not reload the slide."); },
-  editingChanged(on) { state.editing = on; },
+  editingChanged(on) {
+    state.editing = on;
+    // after the edit's own save, which the bridge asks for next
+    if (!on && heldFiles) setTimeout(() => queueEdit(() => { const d = heldFiles; heldFiles = null; if (d) applyFiles(d); }), 0);
+  },
   requestDelete(eid) { requestDelete(eid); },
   dropFiles(files, at) { attachFiles(files, at); },
   dragOver(on) { $("drop-hint").hidden = !on; },
@@ -902,6 +906,20 @@ function applyStatus(s) {
   shownProblem = s.deckProblem;
   renderToolbar();
 }
+let heldFiles = null;   // file changes that came while a text edit was open
+function applyFiles({ files, manual, rev }) {
+  if (rev) state.rev = rev;
+  const cssOnly = files.every((f) => f.endsWith(".css"));
+  if (manual && main) {
+    loadMeasure();   // the visible slide already shows the hand edit
+  } else if (cssOnly && main) {
+    main.bridge.reloadCss(files);
+    measure?.bridge?.reloadCss(files);
+  } else {
+    loadMain();
+    loadMeasure();
+  }
+}
 /* The deck's events: behind the front through the worker all of this browser's tabs share (browsers open at
    most 6 connections to one port; see public/events-worker.js), on its own server straight from it */
 function openEvents(on, onError) {
@@ -946,18 +964,14 @@ function connect() {
       if (t) t.undone = d.undone !== false;
       rerenderTurns();
     },
-    files({ files, manual, rev }) {
-      if (rev) state.rev = rev;
-      const cssOnly = files.every((f) => f.endsWith(".css"));
-      if (manual && main) {
-        loadMeasure();   // the visible slide already shows the hand edit
-      } else if (cssOnly && main) {
-        main.bridge.reloadCss(files);
-        measure?.bridge?.reloadCss(files);
-      } else {
-        loadMain();
-        loadMeasure();
+    files(d) {
+      // typing in the slide: the reload waits until the edit ends, and the edit is saved against the files
+      // it began with (changed meanwhile: refused, with the text to copy; see keepRejectedText)
+      if (state.editing) {
+        heldFiles = heldFiles ? { files: [...new Set([...heldFiles.files, ...d.files])], manual: heldFiles.manual && d.manual, rev: d.rev } : d;
+        return;
       }
+      applyFiles(d);
     },
     async measure({ id, index }) {
       try { api("measure-result", { id, result: await queueMeasure(index) }); }
