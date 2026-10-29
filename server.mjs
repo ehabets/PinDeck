@@ -1051,21 +1051,38 @@ function recordHandEdit(before, html, label, note, { manual = true, deletedFiles
 }
 
 /* What deleting an element would remove, and which of its files nothing else uses. Files outside the
-   deck folder, in vendor/, or still referenced elsewhere (index.html, theme.css) are never offered. */
+   deck folder, in vendor/, or still referenced elsewhere (the rest of the deck, theme.css, brand.css, or
+   another deck in the folder or one folder down, which may share figures/) are never offered. */
 function deletePlan(eid) {
   const html = readDeck(DECK_FILE);
   const target = deleteTarget(html, eid);
   if (!target) return null;
   const rest = removeElement(html, target.eid);
   const css = (readDeck("theme.css") || "") + (readDeck("brand.css") || "");
+  const others = otherDeckRefs();
   const files = fileRefs(target.outer).flatMap((ref) => {
     const abs = path.resolve(DECK_DIR, ref);
     const rel = path.relative(DECK_DIR, abs).split(path.sep).join("/");
     if (rel.startsWith("..") || rel.startsWith("vendor/") || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return [];
-    const usedElsewhere = fileRefs(rest).some((r) => path.resolve(DECK_DIR, r) === abs) || css.includes(ref) || css.includes(rel);
-    return [{ rel, bytes: fs.statSync(abs).size, usedElsewhere }];
+    const usedBy = others.filter((o) => o.uses(abs)).map((o) => o.name);
+    const usedElsewhere = fileRefs(rest).some((r) => path.resolve(DECK_DIR, r) === abs) || css.includes(ref) || css.includes(rel) || usedBy.length > 0;
+    return [{ rel, bytes: fs.statSync(abs).size, usedElsewhere, usedBy }];
   });
   return { ...target, html: rest, files };
+}
+/* The other decks of this folder and one folder down, each with a test of whether it refers to a file: in its
+   HTML (relative to its own folder), or in the stylesheets beside it */
+function otherDeckRefs() {
+  const own = path.join(DECK_DIR, DECK_FILE);
+  const decks = [...fs.readdirSync(DECK_DIR).filter((f) => /\.html?$/i.test(f)).map((f) => ({ dir: DECK_DIR, file: f })),
+    ...listDecks([DECK_DIR]).filter((d) => d.dir !== DECK_DIR)].filter((d) => path.join(d.dir, d.file) !== own);
+  return decks.map(({ dir, file }) => {
+    const read = (f) => { try { return fs.statSync(f).size <= 5e6 ? fs.readFileSync(f, "utf8") : ""; } catch { return ""; } };
+    const refs = new Set(fileRefs(read(path.join(dir, file))).map((r) => { try { return path.resolve(dir, decodeURI(r)); } catch { return path.resolve(dir, r); } }));
+    const css = dir === DECK_DIR ? "" : read(path.join(dir, "theme.css")) + read(path.join(dir, "brand.css"));
+    return { name: path.relative(DECK_DIR, path.join(dir, file)).split(path.sep).join("/"),
+      uses: (abs) => refs.has(abs) || (!!css && css.includes(path.relative(dir, abs).split(path.sep).join("/"))) };
+  });
 }
 
 /* ---- Undo (assistant turns and hand edits share one history) ---------------------------------------

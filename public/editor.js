@@ -1139,10 +1139,10 @@ async function requestDelete(eid) {
       (slide >= 0 ? ` on slide ${slide + 1}` : "") + " will be removed from the slide.";
     $("delete-files").innerHTML = info.files.map((f, i) => f.usedElsewhere
       ? `<div class="file kept"><span>📄</span><span><code>${esc(f.rel)}</code>
-           <span class="why">Still used elsewhere in the deck, so it is kept.</span></span></div>`
+           <span class="why">${f.usedBy?.length ? `Also used by ${esc(f.usedBy.join(", "))}` : "Still used elsewhere in the deck"}, so it is kept.</span></span></div>`
       : `<label class="file"><input type="checkbox" data-file="${esc(f.rel)}" checked>
            <span>Also delete <code>${esc(f.rel)}</code> (${fmtBytes(f.bytes)})
-           <span class="why">Not used anywhere else in the deck.</span></span></label>`).join("");
+           <span class="why">Not used anywhere else in the deck, or by the other decks in its folder.</span></span></label>`).join("");
     const choice = await new Promise((resolve) => {
       const d = $("delete-dialog");
       d.addEventListener("close", () => resolve(d.returnValue), { once: true });

@@ -1098,6 +1098,26 @@ test("Undo does not overwrite a file created where a deleted picture was", async
   assert.ok(fs.readFileSync(picFile).equals(original));
 });
 
+test("Deleting a picture keeps its file when another deck in the folder, or one folder down, uses it", async (t) => {
+  const fx = fixture(t);
+  const html = fs.readFileSync(path.join(fx.deck, "index.html"), "utf8");
+  const s = await startServer(t, fx);
+  const eid = /<img\b[^>]*transmission_loss\.svg[^>]*>/.exec(fs.readFileSync(path.join(fx.deck, "index.html"), "utf8"))[0].match(/data-eid="([^"]+)"/)[1];
+  const pic = async () => (await s.api(`delete-info?eid=${encodeURIComponent(eid)}`)).data.files.find((f) => f.rel === "figures/transmission_loss.svg");
+  assert.equal((await pic()).usedElsewhere, false);
+  fs.writeFileSync(path.join(fx.deck, "second.html"), html);
+  assert.deepEqual(await pic(), { ...(await pic()), usedElsewhere: true, usedBy: ["second.html"] });
+  // the delete itself keeps it too, whatever the editor asks for
+  fs.rmSync(path.join(fx.deck, "second.html"));
+  fs.mkdirSync(path.join(fx.deck, "lecture"));
+  fs.writeFileSync(path.join(fx.deck, "lecture", "index.html"), html.replaceAll('src="figures/', 'src="../figures/'));
+  assert.deepEqual((await pic()).usedBy, ["lecture/index.html"]);
+  const r = await s.api("delete", { eid, files: ["figures/transmission_loss.svg"] });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data.files, []);
+  assert.ok(fs.existsSync(path.join(fx.deck, "figures/transmission_loss.svg")));
+});
+
 /* ---- Watcher, live reload and reconnect ------------------------------------------------------- */
 function events(t, s) {
   const ctrl = new AbortController();
