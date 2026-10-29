@@ -683,8 +683,9 @@ test("A screenshot shows the pins its message carries: none after a reload, neve
   // the page Chrome opened: its start page names the target, with the pins drawn
   const pinsDrawn = () => {
     const start = fileURLToPath(fs.readFileSync(chromeLog, "utf8").trim().split("\n").at(-1));
-    const login = new URL(/url=([^"]+)"/.exec(fs.readFileSync(start, "utf8"))[1].replace(/&amp;/g, "&"));
-    return JSON.parse(new URL(login.searchParams.get("next"), s.url).searchParams.get("pins"));
+    const target = new URL(/url=([^"]+)"/.exec(fs.readFileSync(start, "utf8"))[1].replace(/&amp;/g, "&"));
+    assert.equal(target.pathname.startsWith("/v/"), true, "the deck page itself, no login");
+    return JSON.parse(target.searchParams.get("pins"));
   };
   const pin = (n) => ({ n, eid, tag: "section", slide, box: { x: 0, y: 0, w: 10, h: 10 }, at: { x: 5, y: 5 }, point: { x: 5, y: 5 } });
   assert.equal((await s.api("message", { text: "with pins", screenshot: true, current: slide, pins: [pin(1), pin(2)] })).status, 200);

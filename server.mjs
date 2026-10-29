@@ -1395,11 +1395,19 @@ const BRIDGE_TAG = `<script src="/editor/bridge.js"></script>\n</body>`;
    there, and the front sends this server's token in a header. */
 const { loginCode, loginUrl, authed, login } = createLogin({ token: TOKEN, port: () => PORT, origin: () => ORIGIN });
 /* Headless Chrome gets a start page in its own profile folder (0700) instead of a URL with a secret on
-   its command line: the page sends it to a one-time login code, which leads on to the target. */
+   its command line. It never logs in: its targets are the deck's pages under /v/, which need no cookie, so a
+   deck's script there has no way to the API. Chrome's command-line screenshot, DOM dump and print do not
+   work on a page with a sandbox policy, so the page it asks for is served without one, once: the target
+   carries a key that works for one request (headlessKeys). */
+const headlessKeys = new Set();
 function chromeStart(profile, target) {
   fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
   const start = path.join(profile, "pindeck-start.html");
-  const to = loginUrl(loginCode(120000), target.slice(ORIGIN.length)).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const key = crypto.randomBytes(16).toString("hex"), u = new URL(target);
+  headlessKeys.add(key);
+  setTimeout(() => headlessKeys.delete(key), 120000).unref();
+  u.searchParams.set("headless", key);
+  const to = u.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   fs.writeFileSync(start, `<!doctype html><meta http-equiv="refresh" content="0;url=${to}">`, { mode: 0o600 });
   return pathToFileURL(start).href;
 }
@@ -1478,7 +1486,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && (snap = p.match(/^\/(?:deck|files)\/(?:.*\/)?__pindeck-print-([\w-]+)\.html$/))) {
       const html = snapshots.get(snap[1]);
       if (!html) return text(res, 404, "Not found");
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...deckHeaders(".html", viewing) });
+      // a static print layout (its scripts were removed): no scripts at all, instead of the sandbox Chrome cannot print
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...deckHeaders(".css", viewing),
+        "content-security-policy": "script-src 'none'" });
       return res.end(html);
     }
     // A deck page asked for outside /v/ (the editor's frames ask for deck/?editor=main, Present for deck/):
@@ -1510,7 +1520,8 @@ const server = http.createServer(async (req, res) => {
           return slideSelector(parse(s)) ? s.replace(/<\/body>/i, BRIDGE_TAG) : s;
         }
         return s.replace(/<\/body>/i, BRIDGE_TAG);
-      }, req, deckHeaders(f, viewing));
+      }, req, ["shot", "dump", "pdf"].includes(mode) && headlessKeys.delete(url.searchParams.get("headless"))
+        ? deckHeaders(".css", viewing) : deckHeaders(f, viewing));   // headless Chrome's page, once (see chromeStart)
     }
     if (viewing) return text(res, 404, "Not found");
 
