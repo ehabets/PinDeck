@@ -1733,7 +1733,9 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { turnId });
     }
     if (p === "/api/source") {
-      const html = getInner(readDeck(DECK_FILE), url.searchParams.get("eid"), JSON.parse(url.searchParams.get("path") || "[]"));
+      let where = [];
+      try { where = JSON.parse(url.searchParams.get("path") || "[]"); } catch {}
+      const html = getInner(readDeck(DECK_FILE), url.searchParams.get("eid"), where);
       return html == null ? json(res, 404, { error: "Element not found in the file." }) : json(res, 200, { html });
     }
     // Speaker notes of a slide: read for the notes field, saved as a hand edit

@@ -929,6 +929,21 @@ test("Decks are .html files: a .htm file is not one", async (t) => {
   assert.deepEqual(listDecks([fx.deck]).map((d) => d.file), ["index.html"]);
 });
 
+test("Hand-edit requests without an element (or with nonsense) change nothing and are no server errors", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const file = path.join(fx.deck, "index.html"), before = fs.readFileSync(file, "utf8");
+  for (const [p, body] of [["text", {}], ["text", { eid: 7, html: "x" }], ["text", { eid: firstSlideEid(fx.deck), path: {}, html: "x" }],
+    ["split", {}], ["remove", {}], ["edit", { ops: [{}] }], ["edit", { ops: "x" }], ["notes", {}], ["delete", {}],
+    ["slide-hidden", {}], ["move-slide", {}]]) {
+    const r = await s.api(p, body);
+    assert.ok(r.status >= 400 && r.status < 500, `${p} ${JSON.stringify(body)}: ${r.status} ${JSON.stringify(r.data)}`);
+  }
+  for (const q of ["source?path=%7B%7D", "source?eid=x&path=nope", "source", "delete-info", "notes"])
+    assert.ok((await s.api(q)).status < 500, q);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);
