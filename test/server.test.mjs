@@ -1002,6 +1002,22 @@ test("Symlinked decks: a linked folder is listed and opens; a deck file linked f
   assert.equal(page.status, 200, "the linked folder's deck is served");
 });
 
+test("A deck written in pieces with a pause is not replaced halfway by the id pass", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const file = path.join(fx.deck, "index.html"), full = fs.readFileSync(file, "utf8").replace("</section>", "<p>new paragraph</p></section>");
+  const fd = fs.openSync(file, "w");   // as a program that does not save atomically
+  fs.writeSync(fd, full.slice(0, full.length / 2));
+  const inode = fs.statSync(file).ino;
+  await sleep(3500);
+  assert.equal(fs.statSync(file).ino, inode, "not replaced while incomplete");
+  fs.writeSync(fd, full.slice(full.length / 2));
+  fs.closeSync(fd);
+  await waitFor(() => /<p data-eid="[^"]+">new paragraph<\/p>/.test(fs.readFileSync(file, "utf8")), "ids for the new paragraph", 8000);
+  assert.match(fs.readFileSync(file, "utf8"), /<\/html>\s*$/);
+  assert.equal((await s.api("status")).status, 200);
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);

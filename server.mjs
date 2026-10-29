@@ -114,6 +114,7 @@ if (deckProblem) {
 }
 // reveal.js, or a deck that names its slides: another framework's deck is left exactly as it is (no ids, no state)
 const deckAtStart = fs.readFileSync(path.join(DECK_DIR, DECK_FILE), "utf8");
+const ENDS_HTML = /<\/html>\s*$/i;
 const frameworkProblem = unsupportedMessage(deckAtStart, DECK_FILE);
 if (frameworkProblem) {
   console.error(frameworkProblem);
@@ -1036,13 +1037,19 @@ function scheduleFlush() {
     if (external) {
       state.notes = [...new Set([...state.notes,
         "The deck files changed outside this chat since your last turn (edited by hand or by another tool). Re-read before editing."])];
-      // new elements from a hand edit get ids once the file is quiet: unchanged for 800 ms and present
+      // new elements from a hand edit get ids once the file is quiet: present, and unchanged since (see pass)
       clearTimeout(eidTimer);
       const seen = hash(readDeck(DECK_FILE) ?? "");
+      // a program that writes the file in pieces, with a pause, must not find it replaced halfway (its rest
+      // would go to the old file): unchanged for 2 s, and complete (ending in </html>, if the deck did)
       const pass = () => {
         if (state.busy) return;
         const now = readDeck(DECK_FILE);
         if (now == null || hash(now) !== seen) return;   // still being written; its own event comes
+        let age = 0;
+        try { age = Date.now() - fs.statSync(path.join(DECK_DIR, DECK_FILE)).mtimeMs; } catch { return; }
+        if (age < 2000) { eidTimer = setTimeout(pass, 2000 - age); return; }
+        if (ENDS_HTML.test(deckAtStart) && !ENDS_HTML.test(now)) return;   // incomplete: its next save comes
         runEidPass();
       };
       eidTimer = setTimeout(pass, 800);
