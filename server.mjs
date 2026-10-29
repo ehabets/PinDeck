@@ -31,7 +31,7 @@ import { CodexSession } from "./lib/codex.mjs";
 import { createDeckTools } from "./lib/agent-tools.mjs";
 import { PROVIDERS, migrateSettings, selectModel, handoverSummary, curateModels } from "./lib/models.mjs";
 import { formatLayout, formatPin } from "./lib/layout.mjs";
-import { printLayout, printPdf, PDF_HEAD_TAG, PDF_PAGE_TAG } from "./lib/pdf.mjs";
+import { printLayout, printPdf, chromeReason, ROOT_ARGS, PDF_HEAD_TAG, PDF_PAGE_TAG } from "./lib/pdf.mjs";
 import { readPptx } from "./lib/pptx.mjs";
 import { exportPdf as pptxToPdf, renderJobs, renderAvailable, pdfInfo } from "./lib/pptx-render.mjs";
 import { buildImport, planSlides } from "./lib/pptx-import.mjs";
@@ -332,7 +332,7 @@ function chrome(args, done, signal) {
     // a profile per run: concurrent runs must not share one
     const profile = path.join(STATE_DIR, "chrome", `p${process.pid}-${++chromeSeq}`);
     const { size } = deckSlides();
-    const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+    const proc = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", ...ROOT_ARGS,
       "--no-default-browser-check", "--disable-extensions", "--mute-audio", `--user-data-dir=${profile}`,
       `--window-size=${size.width},${size.height}`, "--force-device-scale-factor=1", "--virtual-time-budget=5000",
       ...args.map((a) => a.startsWith(ORIGIN + "/") ? chromeStart(profile, sized(a, size)) : a)]);
@@ -350,7 +350,8 @@ function chrome(args, done, signal) {
     proc.stderr.on("data", (d) => { err += d; check(); });
     proc.on("error", (e) => finish(reject, e));
     // "close", not "exit": at exit Chrome's last output (the line saying the file is written) may still be unread
-    proc.on("close", () => (done(out, err) ? finish(resolve, out) : finish(reject, new Error("Chrome exited without output."))));
+    proc.on("close", () => (done(out, err) ? finish(resolve, out)
+      : finish(reject, new Error(`Chrome exited without output${chromeReason(err) ? `: ${chromeReason(err)}` : "."}`))));
     const timer = setTimeout(() => finish(reject, new Error("Chrome timed out.")), 25000);
     signal?.addEventListener("abort", () => finish(reject, new Error("Stopped.")), { once: true });
   });

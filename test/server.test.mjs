@@ -713,6 +713,17 @@ test("A screenshot shows the pins its message carries: none after a reload, neve
   assert.ok(!fakeLog(fx).some((e) => e.type === "user" && /stop me/.test(e.text)));
 });
 
+test("A Chrome that fails gives its own reason", async (t) => {
+  const fx = fixture(t);
+  const chrome = path.join(fx.root, "chrome-fails");
+  fs.writeFileSync(chrome, `#!/bin/sh\necho "[0101/000000.000:ERROR:zygote_host_impl_linux.cc(100)] Running as root without --no-sandbox is not supported." >&2\nexit 1\n`, { mode: 0o755 });
+  const s = await startServer(t, fx, { env: { CHROME_BIN: chrome } });
+  const eid = firstSlideEid(fx.deck);
+  assert.equal((await s.api("message", { text: "look", screenshot: true, current: { index: 0, eid } })).status, 200);
+  const notice = await waitFor(() => chatOf(fx).find((e) => e.kind === "notice"), "the notice");
+  assert.equal(notice.text, "Screenshot of slide 1 failed: Chrome exited without output: Running as root without --no-sandbox is not supported.");
+});
+
 test("A screenshot that fails: the assistant is told, and the notice follows the message", async (t) => {
   const fx = fixture(t);
   const s = await startServer(t, fx);   // no Chrome
