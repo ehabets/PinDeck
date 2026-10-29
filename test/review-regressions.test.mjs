@@ -205,3 +205,16 @@ test('Moving a horizontal slide to the end places it after the final vertical st
   assert.equal(intro.parent.attrs.class.value, 'slides');
   assert.match(moveSlide(verticalDeck, 'a', 'intro').error, /vertical stack/);
 });
+
+test('assignEids stays fast on a large deck without ids, and numbers repeated names in order', () => {
+  const slide = '<section><h2>Same title</h2><ul>' + '<li>point <strong>bold</strong></li>'.repeat(12) + '</ul></section>\n';
+  const html = `<html><body><div class="reveal"><div class="slides">\n${slide.repeat(1000)}</div></div></body></html>`;
+  const t0 = Date.now();
+  const r = assignEids(html);
+  assert.ok(Date.now() - t0 < 3000, `${Date.now() - t0} ms for 1000 slides`);
+  assert.equal(r.assigned.length, 1000 * 15);   // the slide, its h2, ul and 12 li
+  const eids = [...r.html.matchAll(/<section data-eid="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(eids.slice(0, 3), ['same-title', 'same-title-2', 'same-title-3']);
+  assert.equal(new Set(eids).size, 1000);
+  assert.match(r.html, /<li data-eid="same-title\/li-12">/);
+});
