@@ -846,7 +846,7 @@ function handleEvent(ev) {
 function startTurn(promptText, userEntry) {
   // every deck file as it is now: the assistant may change any of them (not brand.css or vendor/), and undo
   // takes back all it changed
-  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), scan: scanDeck(), touched: new Set(),
+  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), gitConfig: readDeck(".git/config"), scan: scanDeck(), touched: new Set(),
     time: { start: Date.now(), end: null } };
   logTurnTime(state.turn.time);
   state.busy = true;
@@ -874,6 +874,15 @@ function finishTurn({ error, cost, duration, denials = [] }) {
     if (turn.before[f] != null) writeDeck(f, turn.before[f]);
     else fs.rmSync(path.join(DECK_DIR, f), { force: true });   // a locked file that the assistant created
     restored.push(f);
+  }
+  // .git/config can make git run commands (filters, fsmonitor), and PinDeck runs git after the id pass: an
+  // assistant must not change it, by whatever path or spelling it got there
+  if (readDeck(".git/config") !== turn.gitConfig) {
+    try {
+      if (turn.gitConfig == null) fs.rmSync(path.join(DECK_DIR, ".git/config"), { force: true });
+      else fs.writeFileSync(path.join(DECK_DIR, ".git/config"), turn.gitConfig);
+      restored.push(".git/config");
+    } catch (e) { console.error(e.message); }
   }
   toolEntries.clear();
   const eid = runEidPass();

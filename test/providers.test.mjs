@@ -37,6 +37,9 @@ test('bridge rejects outside files, linked files, locked edits and arbitrary com
  fs.symlinkSync(path.join(root,'secret.txt'),path.join(deck,'linked.txt'));
  await assert.rejects(tools('pindeck_read',{path:'linked.txt'}),/outside/);
  await assert.rejects(tools('pindeck_edit',{path:'brand.css',oldText:'locked',newText:'oops'}),/locked/);
+ // other spellings name the same file on macOS's usual (case-insensitive) volumes
+ for (const p of ['BRAND.css','.GIT/config','.Git/hooks/pre-commit','Vendor/x.js','./.git/../.GIT/config'])
+  await assert.rejects(tools('pindeck_write',{path:p,content:'oops'}),/locked/,p);
  await assert.rejects(tools('pindeck_command',{command:'git-setup',args:[]}),/Invalid/);
  await assert.rejects(tools('pindeck_command',{command:'bash',args:['-c','touch pwned']}),/Invalid/);
  await tools('pindeck_edit',{path:'index.html',oldText:'Before',newText:'After $&'});

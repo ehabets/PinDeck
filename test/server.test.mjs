@@ -946,6 +946,17 @@ test("Decks in one folder: a turn leaves out the other decks, and what another d
   assert.equal(fs.existsSync(path.join(fx.deck, "notes-B.txt")), false);
 });
 
+test("An assistant that changes .git/config: restored after the turn, before PinDeck runs git", async (t) => {
+  const fx = fixture(t);
+  fs.mkdirSync(path.join(fx.deck, ".git"));
+  fs.writeFileSync(path.join(fx.deck, ".git", "config"), "[core]\n\tbare = false\n");
+  const s = await startServer(t, fx);
+  assert.equal((await s.api("message", { text: "fake-op append .git/config" })).status, 200);
+  const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  assert.deepEqual(turn.restored, [".git/config"]);
+  assert.equal(fs.readFileSync(path.join(fx.deck, ".git", "config"), "utf8"), "[core]\n\tbare = false\n");
+});
+
 test("Decks are .html files: a .htm file is not one", async (t) => {
   const fx = fixture(t);
   const old = path.join(fx.deck, "old.htm");
