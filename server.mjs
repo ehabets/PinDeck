@@ -414,6 +414,7 @@ const CHAT_FILE = path.join(STATE_DIR, "chat.json");
 const state = {
   chat: [], seq: 0, busy: false, model: MODEL || null, switching: false, preparing: null, sessionId: null, provider: "claude", handover: "", sessionArchive: [],
   turns: [], redo: [], turn: null, notes: [], lastPins: [], current: null,
+  conversation: 1,   // counts the conversations of this run: a new chat or another provider starts the next
   uploads: new Set(),   // files uploaded for the next message; removable until it is sent
   pdfFigures: new Set(),   // figures/ files written by pdf-figure, which it may overwrite
 };
@@ -739,7 +740,7 @@ async function changeSettings(requested) {
     Object.assign(settings, choice);
     deckSettings = { ...choice };
     state.provider = choice.provider;
-    if (changingProvider) { state.sessionId = candidate.sessionId || null; state.handover = summary; state.model = null; }
+    if (changingProvider) { state.sessionId = candidate.sessionId || null; state.handover = summary; state.model = null; state.conversation++; }
     if (reuse) candidate.settings = choice;
     session = candidate;
     if (!reuse && candidate.initialEvent()) handleEvent(candidate.initialEvent());
@@ -880,7 +881,7 @@ function finishTurn({ error, cost, duration, denials = [] }) {
     deletedFiles.push({ rel, data: fs.readFileSync(abs) });
     fs.rmSync(abs, { force: true });
   }
-  const t = { id: turn.id, kind: "agent", provider: settings.provider, before, after, files, deletedFiles, undone: false };
+  const t = { id: turn.id, kind: "agent", provider: settings.provider, conversation: state.conversation, before, after, files, deletedFiles, undone: false };
   if (files.length) { state.turns.push(t); state.redo = []; }
   addEntry({ kind: "turn", turnId: files.length ? t.id : null, files, error, cost, duration,
     denials, restored, newIds: eid.assigned.length });
@@ -1171,6 +1172,8 @@ function conflict(res, direction, files) {
     error: `${files.join(", ")} changed since then (edited outside PinDeck?), so ${direction === "undo" ? "Undo" : "Redo"} was not done: ` +
       `it would overwrite those changes. Reload to see the files as they are.` });
 }
+// an assistant turn made in the conversation going on now (not before a new chat or a provider switch)
+const byThisChat = (t) => t.conversation === state.conversation;
 function undo(res) {
   if (state.busy) return json(res, 409, { error: "Wait until the assistant has finished." });
   const t = liveTurns().at(-1);
@@ -1182,9 +1185,11 @@ function undo(res) {
   for (const { rel } of t.addedFiles || []) fs.rmSync(path.join(DECK_DIR, rel), { force: true });   // imported figures go
   t.undone = true;
   state.redo.push(t);
+  const names = t.files.map((f) => f.file);
   state.notes.push(t.kind === "manual"
     ? `The user undid their hand edit (${t.label}); ${DECK_FILE} is back to the state before it.`
-    : `The user undid your change from turn ${t.id}; ${t.files.map((f) => f.file).join(" and ")} are back to the state before it. Re-read before editing.`);
+    : `The user undid ${byThisChat(t) ? "your change from turn" : "a change made before this conversation began, in turn"} ${t.id}; ` +
+      `${names.join(" and ")} ${names.length > 1 ? "are" : "is"} back to the state before it. Re-read before editing.`);
   broadcast("undone", { turnId: t.id, undone: true });
   pushStatus();
   return json(res, 200, {});
@@ -1646,7 +1651,9 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/new-chat" && req.method === "POST") {
       if (state.busy || starting) return json(res, 409, { error: "Stop the current request before starting a new chat." });
       session?.stop();
-      Object.assign(state, { chat: [], sessionId: null, handover: "", turns: [], redo: [], turn: null, busy: false, notes: [] });
+      // the conversation starts anew; the slides, and their undo and redo, stay as they are
+      if (state.sessionId) state.sessionArchive.push({ provider: state.provider, id: state.sessionId });
+      Object.assign(state, { chat: [], sessionId: null, handover: "", turn: null, busy: false, notes: [], conversation: state.conversation + 1 });
       saveChat();
       broadcast("reset", { chat: [] });
       ensureSession().catch(e => addEntry({ kind: "notice", text: e.message }));
@@ -1677,7 +1684,8 @@ const server = http.createServer(async (req, res) => {
       for (const { rel, data } of t.addedFiles || []) writeDeckFile(rel, data, false);
       t.undone = false;
       state.notes.push(t.kind === "manual" ? `The user redid their hand edit: ${t.label}.`
-        : `The user redid your change from turn ${t.id} after undoing it.`);
+        : byThisChat(t) ? `The user redid your change from turn ${t.id} after undoing it.`
+        : `The user redid a change made before this conversation began (turn ${t.id}): ${t.files.map((f) => f.file).join(" and ")} as that change left ${t.files.length > 1 ? "them" : "it"}. Re-read before editing.`);
       broadcast("undone", { turnId: t.id, undone: false });
       pushStatus();
       return json(res, 200, {});

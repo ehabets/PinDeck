@@ -808,7 +808,7 @@ async function send() {
 $("send").onclick = send;
 $("stop").onclick = () => { $("working-text").textContent = "Stopping…"; api("stop", {}); };
 $("new-chat").onclick = async () => {
-  if (!confirm("Start a new conversation? The assistant forgets this chat; your slides stay as they are.")) return;
+  if (!confirm("Start a new conversation? The assistant forgets this chat; your slides, and Undo and Redo, stay as they are.")) return;
   await api("new-chat", {});
 };
 function autosize() {

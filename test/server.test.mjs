@@ -866,6 +866,25 @@ test("Switch with summary of an empty conversation: a new conversation, no empty
   assert.equal(fakeLog(fx).find((e) => e.event === "input" && e.provider === "codex" && e.type === "user").text.trim(), "hello codex");
 });
 
+test("New chat keeps Undo and Redo; undoing a change from before the conversation says so to the new one", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const theme = path.join(fx.deck, "theme.css"), before = fs.readFileSync(theme, "utf8");
+  assert.equal((await s.api("message", { text: "please edit theme" })).status, 200);
+  await waitFor(async () => !(await s.api("status")).data.busy && chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  await sleep(500);   // the fake agent's own write is seen by the watcher after its instant turn (a real CLI's is not)
+  assert.equal((await s.api("new-chat", {})).status, 200);
+  assert.equal((await s.api("status")).data.undo, "AI change", "Undo still offered");
+  await waitFor(async () => (await s.api("status")).data.sessionId, "the new session");
+  assert.equal((await s.api("undo", {})).status, 200);
+  assert.equal(fs.readFileSync(theme, "utf8"), before);
+  assert.equal((await s.api("message", { text: "next" })).status, 200);
+  const sent = await waitFor(() => fakeLog(fx).filter((e) => e.type === "user").at(-1)?.text.includes("next") && fakeLog(fx).filter((e) => e.type === "user").at(-1).text, "the message");
+  assert.match(sent, /The user undid a change made before this conversation began, in turn \d+; theme\.css is back to the state before it\./);
+  assert.doesNotMatch(sent, /undid your change/);
+  assert.doesNotMatch(sent, /changed outside this chat/, "an undo is not an outside edit");
+});
+
 test("Decks in one folder: a turn leaves out the other decks, and what another deck's assistant wrote meanwhile", async (t) => {
   const fx = fixture(t);
   const talk = path.join(fx.deck, "talk.html");
