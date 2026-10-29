@@ -844,6 +844,10 @@ function handleKey(k, mod = {}) {
 }
 document.addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, textarea, dialog")) return;
+  // a focused button or link takes Enter and Space itself (a menu item is chosen, a menu opens), and a menu
+  // or its button keeps the arrow keys: no slide change, no jump to the chat
+  if ((e.key === "Enter" || e.key === " ") && e.target.closest?.("button, a[href], select")) return;
+  if (e.key.startsWith("Arrow") && e.target.closest?.(".menu, [aria-haspopup]")) return;
   const meta = e.metaKey || e.ctrlKey;
   if (meta && (e.key === "z" || e.key === "Z")) { e.preventDefault(); return handleKey(e.key, { meta, shift: e.shiftKey }); }
   if (meta || e.altKey) return;
