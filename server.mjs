@@ -1389,6 +1389,8 @@ function serveFile(res, file, transform, req, extra = {}) {
 }
 
 let ready = false;
+const NEEDS_DECK = /^\/api\/(message|slides|layout|shot|pdf|pdf-figure|edit|text|split|remove|notes|delete|delete-info|source|slide-hidden|move-slide|add-slide|import-apply|export)$/;
+const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;   // answered as text, for cli.mjs
 /* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
    read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret. */
 const SCRIPTABLE = /\.(html|svg|xml)$/i;
@@ -1486,6 +1488,12 @@ const server = http.createServer(async (req, res) => {
       clients.add(res);
       req.on("close", () => clients.delete(res));
       return;
+    }
+    // the deck file gone (moved, renamed, deleted) while PinDeck runs: say so, instead of failing on it
+    if (NEEDS_DECK.test(p) && readDeck(DECK_FILE) == null) {
+      const why = `${path.join(DECK_DIR, DECK_FILE)} is not there any more (moved, renamed or deleted). Put it back, ` +
+        `or start PinDeck for the deck where it is now.`;
+      return CLI_ROUTES.test(p) ? text(res, 409, why) : json(res, 409, { code: "deck-gone", error: why });
     }
     if (p === "/api/ping") return json(res, 200, { ok: true });
     if (p === "/api/login-link") return json(res, 200, { url: loginUrl(loginCode(3600000)) });

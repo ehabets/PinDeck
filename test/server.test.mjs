@@ -1018,6 +1018,23 @@ test("A deck written in pieces with a pause is not replaced halfway by the id pa
   assert.equal((await s.api("status")).status, 200);
 });
 
+test("The deck folder moved away while PinDeck runs: requests say so, no server errors", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const away = fx.deck + " moved";
+  fs.renameSync(fx.deck, away);
+  t.after(() => { if (fs.existsSync(away)) fs.renameSync(away, fx.deck); });
+  const m = await s.api("message", { text: "hello" });
+  assert.equal(m.status, 409);
+  assert.match(m.data.error, /index\.html is not there any more \(moved, renamed or deleted\)/);
+  const sl = await s.api("slides");
+  assert.equal(sl.status, 409);
+  assert.match(sl.data, /is not there any more/);
+  for (const [p, b] of [["edit", { ops: [] }], ["notes", { eid: "x", text: "t" }], ["layout?slide=1"]]) assert.equal((await s.api(p, b)).status, 409, p);
+  fs.renameSync(away, fx.deck);
+  await waitFor(async () => (await s.api("slides")).status === 200, "the deck back");
+});
+
 test("Read-only deck folder: refused before anything is written", { skip: process.getuid?.() === 0 && "root ignores permissions" }, async (t) => {
   const fx = fixture(t);
   fs.chmodSync(fx.deck, 0o555);
