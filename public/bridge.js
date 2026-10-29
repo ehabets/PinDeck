@@ -846,7 +846,9 @@
     teardownEdit(ed);
     host()?.editingChanged(false);
     chainDirty = true;
-    host()?.commitSplit({ eid: ed.eid, html, newHtml, newEid, cls, text: textOf(el).slice(0, 200) })
+    // whole: the bullet's text as typed, offered to copy if the save is refused
+    host()?.commitSplit({ eid: ed.eid, html, newHtml, newEid, cls, text: textOf(el).slice(0, 200),
+      whole: [textOf(el), textOf(li)].filter((t) => t.trim()).join(" ") })
       .then((real) => { if (real && real !== newEid) li.dataset.eid = real; });
     startEdit({ el: li, sec: ed.sec, eid: newEid, path: [], isNew: true }, null, null, { src: newHtml, caret: "start" });
   }

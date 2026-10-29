@@ -164,6 +164,27 @@ test('Hand edits keep saving after one fails with a network error', async () => 
   assert.deepEqual(toasts, ['Could not save the change.']);
 });
 
+test('Enter in a bullet after an outside change: the save is refused and the typed bullet offered to copy', async () => {
+  const toasts = [], kept = [], sent = [];
+  let loads = 0;
+  const context = vm.createContext({
+    toast: (msg) => toasts.push(msg), loadMain() { loads++; }, keepRejectedText: (text, d) => kept.push([text, d.code]),
+    queueEdit: (fn) => fn(),
+    async api(p, body) {
+      sent.push(body);
+      return { ok: false, json: async () => ({ code: 'stale', rev: 'r2', error: 'The deck changed outside PinDeck.' }) };
+    },
+  });
+  const methods = editor.slice(editor.indexOf('  commitSplit(op) {'), editor.indexOf('  commitRemove(eid) {'));
+  const host = vm.runInContext(`({ ${methods} })`, context);
+  const eid = await host.commitSplit({ eid: 's/li', html: 'Typed before', newHtml: 'and after', newEid: 's/li-2', text: 'Typed before', whole: 'Typed before and after' });
+  assert.equal(eid, null);
+  assert.deepEqual(kept, [['Typed before and after', 'stale']]);
+  assert.deepEqual(toasts, []);
+  assert.equal(loads, 1);
+  assert.ok(!('whole' in sent[0]), 'the text to copy stays in the editor');
+});
+
 const verticalDeck = `<div class="slides">
 <section data-eid="intro"><h2>Intro</h2></section>
 <section data-eid="stack">

@@ -173,9 +173,15 @@ const editorHost = {
   commitSplit(op) {   // answers with the new bullet's id as saved (null if it was not)
     let eid = null;
     return queueEdit(async () => {
-      const res = await api("split", op);
+      const { whole, ...req } = op;
+      const res = await api("split", req);
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { toast(d.error || "Could not add the bullet."); loadMain(); return; }
+      if (!res.ok) {
+        if (d.code === "stale") keepRejectedText(whole ?? op.text, d);
+        else toast(d.error || "Could not add the bullet.");
+        loadMain();
+        return;
+      }
       eid = d.eid;
     }, "Could not add the bullet.").then(() => eid);
   },
