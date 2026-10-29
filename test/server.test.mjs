@@ -1454,6 +1454,23 @@ function events(t, s) {
   return list;
 }
 
+test("A second deck server uses the model lists the first one asked for; Refresh models asks again", async (t) => {
+  const fx = fixture(t);
+  const other = path.join(fx.root, "second deck");
+  fs.cpSync(EXAMPLE, other, { recursive: true });
+  const s1 = await startServer(t, fx);
+  await settled(s1);
+  const starts = () => fakeLog(fx).filter((e) => e.event === "start").length;
+  const before = starts();
+  const s2 = await startServer(t, fx, { deck: other });
+  const st = await settled(s2);
+  assert.ok(st.models.codex.models.some((m) => m.id === "gpt-test"));
+  await sleep(300);
+  assert.equal(starts(), before, "no backend process started just to list models");
+  await s2.api("models");
+  assert.equal(starts(), before + 2, "Refresh models asks both backends");
+});
+
 test("Status pushes carry the model lists only when they changed", async (t) => {
   const fx = fixture(t);
   const s = await startServer(t, fx);

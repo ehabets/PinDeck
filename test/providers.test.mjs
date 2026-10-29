@@ -201,7 +201,7 @@ test('Claude session grants only supported PinDeck helper commands', async () =>
   DECK_DIR:'/deck',ORIGIN:'http://localhost',TOKEN:'test',session:null,systemPrompt:'instructions',slidesInstructions:()=>'',deckInstructions:()=>'',
   agentEnv:()=>({}),lockedPaths:()=>['brand.css','vendor/**','.git/**'],
   CLI_CMD:'node /app/cli.mjs',EDITABLE:['index.html','theme.css'],LOCKED:['brand.css']});
- vm.runInContext(source.slice(source.indexOf('function makeSession(choice)'),source.indexOf('async function discoverModels()')),ctx);
+ vm.runInContext(source.slice(source.indexOf('function makeSession(choice)'),source.indexOf('/* What each backend offers.')),ctx);
  const agent=vm.runInContext('makeSession({provider:"claude",model:"sonnet",effort:"low"})',ctx);
  const all=agent.args(),args=all.slice(all.indexOf('--allowedTools')+1,all.indexOf('--disallowedTools'));
  assert.deepEqual(Array.from(args.filter(a=>a.startsWith('Bash('))),['layout','shot','slides','pdf','pdf-figure'].map(name=>`Bash(node /app/cli.mjs ${name}:*)`));

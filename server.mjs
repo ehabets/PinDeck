@@ -536,7 +536,7 @@ function servable(base, rel) {
   return ALLOWED_REAL.some((d) => within(d, real)) ? f : null;
 }
 
-let catalog = { claude: { models: [] }, codex: { models: [] } }, discovering = null;
+let catalog = { claude: { models: [] }, codex: { models: [] } };
 let session = null, starting = null;
 const status = () => ({ busy: state.busy, switching: state.switching, preparing: !!state.preparing, model: state.model, sessionId: state.sessionId, settings: { ...settings },
   running: !!session?.running, provider: settings.provider, models: catalog, deck: DECK_DIR, deckFile: DECK_FILE,
@@ -688,9 +688,25 @@ function retire(agent) {
   retiring.add(stopped);
   stopped.finally(() => retiring.delete(stopped));
 }
-async function discoverModels() {
-  if (discovering) return discovering;
-  discovering = Promise.all(["claude", "codex"].map(async provider => {
+/* What each backend offers. Asking means starting a backend process, so it is done once per provider at a
+   time, and the answer is shared: through models.json in the state folder, for the other deck servers too,
+   for 10 minutes (Refresh models asks again). A message waits only for its own provider's list. */
+const MODELS_FILE = path.join(HOME_DIR, "models.json"), MODELS_TTL = 10 * 60000;
+const asking = {};   // provider -> promise of its discovery
+function cachedModels() {
+  try {
+    const c = JSON.parse(fs.readFileSync(MODELS_FILE, "utf8"));
+    return Date.now() - c.time < MODELS_TTL && c.catalog && typeof c.catalog === "object" ? c.catalog : {};
+  } catch { return {}; }
+}
+function cacheModels() {
+  const ok = Object.fromEntries(Object.entries(catalog).filter(([, c]) => c.models.length && !c.error));
+  if (!Object.keys(ok).length) return;
+  try { writeAtomic(MODELS_FILE, JSON.stringify({ time: Date.now(), catalog: { ...cachedModels(), ...ok } })); } catch {}
+}
+function discoverProvider(provider) {
+  if (asking[provider]) return asking[provider];
+  asking[provider] = (async () => {
     if (!providerAvailable(provider).available) { catalog[provider] = { models: [], error: providerAvailable(provider).reason }; return; }
     const agent = makeSession({ provider, model: "", effort: null });
     discoveryAgents.add(agent);
@@ -699,8 +715,19 @@ async function discoverModels() {
       catalog[provider] = { models: curateModels(provider, agent.models || []), error: null };
     } catch (e) { catalog[provider] = { models: [], error: e.message }; }
     finally { discoveryAgents.delete(agent); retire(agent); }
-  })).then(() => { pushStatus(); return catalog; }).finally(() => { discovering = null; });
-  return discovering;
+  })().finally(() => { delete asking[provider]; });
+  return asking[provider];
+}
+/* providers: which to ask; fresh: ask the backends even when another deck server asked lately */
+async function discoverModels({ providers = ["claude", "codex"], fresh = false } = {}) {
+  const cached = fresh ? {} : cachedModels();
+  await Promise.all(providers.map((p) => {
+    if (cached[p]?.models?.length && providerAvailable(p).available) { catalog[p] = cached[p]; return null; }
+    return discoverProvider(p);
+  }));
+  cacheModels();
+  pushStatus();
+  return catalog;
 }
 /* The model and effort as they will be used, once the backend has said what it offers: a saved or given
    model it does not offer gives way to its default model (and the chat says so), an effort the model does
@@ -725,12 +752,17 @@ async function ensureSession() {
   const available = providerAvailable(settings.provider);
   if (!available.available) throw new Error(available.reason);
   starting = (async () => {
-    if (!catalog[settings.provider].models.length) await discoverModels();
+    if (!catalog[settings.provider].models.length) await discoverModels({ providers: [settings.provider] });
     settle();
     Object.assign(settings, selectModel(catalog, settings, {}));
     const agent = makeSession({ ...settings });
     session = agent;
-    try { await agent.start(state.sessionId); if (session === agent) pushStatus(); }
+    try {
+      await agent.start(state.sessionId);
+      // the session's own start lists the models too: the freshest list there is
+      if (agent.models?.length) { catalog[settings.provider] = { models: curateModels(settings.provider, agent.models), error: null }; cacheModels(); }
+      if (session === agent) pushStatus();
+    }
     catch (e) { retire(agent); throw e; }
   })().finally(() => { starting = null; });
   return starting;
@@ -1606,7 +1638,7 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 200, {});
     }
-    if (p === "/api/models" && req.method === "GET") return json(res, 200, await discoverModels());
+    if (p === "/api/models" && req.method === "GET") return json(res, 200, await discoverModels({ fresh: true }));   // Refresh models
     if (p === "/api/settings" && req.method === "POST") {
       const b = await body(req);
       if (state.busy || starting) return json(res, 409, { error: "Wait until the current request finishes before switching." });

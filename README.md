@@ -228,7 +228,9 @@ and Haiku model in each family. Claude versions are compared numerically from di
 a rolling family alias wins ties, avoiding duplicate entries. **Show all available models** reveals
 the full discovered catalog; this display preference is remembered in the browser. A currently selected
 older model remains visible and is never switched automatically by the filter.
-**Refresh models** retries discovery. A missing CLI, missing sign-in, or discovery failure is shown in its provider group.
+**Refresh models** asks the backends again; otherwise the lists are shared by the decks you open for 10 minutes
+(`models.json` in the state folder), so opening a deck starts no backend just to list models. A missing CLI,
+missing sign-in, or discovery failure is shown in its provider group.
 These are backend-reported choices, not a guarantee of current quota or entitlement; a later rejected
 request reports its error. Older CLIs may expose fewer models than a provider's website.
 
