@@ -1093,7 +1093,7 @@ test("Login link: works once, sets an HttpOnly SameSite=Strict cookie named afte
     return (await fetch(url + "&" + new URLSearchParams({ next }))).text();
   };
   assert.match(await link("/deck/index.html?editor=shot&slide=a"), /location\.replace\("\/deck\/index\.html\?editor=shot&slide=a"\)/);
-  for (const next of ["//evil.example/", "https://evil.example/", "/\\evil.example"])
+  for (const next of ["//evil.example/", "https://evil.example/", "/\\evil.example", "/\t/evil.example/x", "/\n/evil.example", "/\r\n/evil.example"])
     assert.match(await link(next), /location\.replace\("\/"\)/, next);
   assert.match(await link("/</script><script>alert(1)"), /\\u003c\/script>/, "no way out of the script");
 });
