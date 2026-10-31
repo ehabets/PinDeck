@@ -907,7 +907,7 @@ function applyStatus(s) {
   imp.disabled = !!why(caps.pptxImport);
   imp.title = why(caps.pptxImport);
   if (why(caps[provider])) $("conn").title = caps[provider].reason;
-  // where the server runs, when it is not this Mac's usual setup: "Linux (beta)", with what is off
+  // where the server runs, when it is not this Mac's usual setup: "Linux", with what is off
   const names = { claude: "Claude", codex: "OpenAI Codex", screenshot: "Screenshots", headlessLayout: "Layout without an open editor",
     pdfExport: "PDF export", pdfPages: "Pictures of PDF pages", pptxImport: "PowerPoint import",
     pptxPictures: "Pictures of PowerPoint slides", audioConvert: "Waveforms of non-WAV audio" };

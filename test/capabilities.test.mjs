@@ -79,7 +79,8 @@ test("macOS: Chrome through CHROME_BIN; PDF pages, import and audio conversion a
 test("Claude's system prompt names the commands this server cannot run", () => {
   const caps = detectCapabilities({ platform: "linux", env: { PATH: "", CHROME_BIN: "/no/chrome" } });   // CI has Chrome
   const p = capabilityPrompt(caps, "node cli.mjs");
-  assert.match(p, /Linux \(beta\)/);
+  assert.match(p, /Linux/);
+  assert.doesNotMatch(p, /beta/i);
   assert.match(p, /`node cli\.mjs shot` does not work here/);
   assert.match(p, /`node cli\.mjs pdf-figure` does not work here/);
   assert.match(p, /`node cli\.mjs layout`/);

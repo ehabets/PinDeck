@@ -2,7 +2,7 @@
 
 > **macOS, and Linux as a beta · Version 3 beta preview** (`3.2.0-beta.1`). On Linux, PinDeck runs as a
 > headless server that you use from your Mac's browser through an SSH tunnel (see
-> [Running on a Linux server](#running-on-a-linux-server-beta)). Windows is not supported. The beta is on
+> [Running on a Linux server](#running-on-a-linux-server)). Windows is not supported. The beta is on
 > npm’s `beta` channel and the [`v3-beta`](https://github.com/ehabets/PinDeck/tree/v3-beta) branch; stable
 > releases (`npx pindeck`) stay on 2.x. See installation below.
 
@@ -32,7 +32,7 @@ checked the layout; the next request, still being typed, refers to the new pins 
 
 ## Quick start
 
-Runs on macOS, and on Linux as a beta. The npm package declares `"os": ["darwin", "linux"]`, so normal
+Runs on macOS and Linux. The npm package declares `"os": ["darwin", "linux"]`, so normal
 npm installation rejects other operating systems. Overriding that check does not make those platforms
 supported. Running the server from a cloned repository on another OS shows a local support notice
 instead of opening the deck or starting a backend.
@@ -94,7 +94,7 @@ the deck, whichever port it runs on.
   The corresponding executable must be on `PATH`; `CLAUDE_BIN` and `CODEX_BIN` can override its path.
   Only the selected backend is required for editing. Model and effort availability comes from that
   backend and account, and may differ from the provider’s website or desktop app.
-* **Platforms:** macOS, and Linux as a beta (see [Running on a Linux server](#running-on-a-linux-server-beta)).
+* **Platforms:** macOS and Linux (see [Running on a Linux server](#running-on-a-linux-server)).
   Windows is not supported. The npm package declares `"os": ["darwin", "linux"]`, so normal npm
   installation rejects other operating systems. This check can be overridden; bypassing it does not make
   those platforms supported. Source launches on unsupported platforms show a local support page without
@@ -308,7 +308,7 @@ library folder, add the folder it points to as an asset root; it does not have t
 PinDeck never writes or deletes through a symlink out of the deck folder: with a `figures/` or `export/`
 that links elsewhere, uploads, exports and deleting a picture's file are refused with the reason.
 
-## Running on a Linux server (beta)
+## Running on a Linux server
 
 PinDeck can run on a Linux machine where the deck lives, with the editor in your Mac's browser. The
 deck, PinDeck, the backend (Claude Code or Codex) and the deck's git clone all stay on the server; the browser only shows the
@@ -339,7 +339,7 @@ Other users of a shared server cannot open the editor or read the deck through P
 protects it is only in your browser's cookie and in PinDeck's own files in `~/.pindeck-v3` (readable only by
 you), never in a page or on a command line.
 
-What works on Linux in this beta: editing by hand, speaker notes, slides, pins, the chat with Claude or Codex,
+What works on Linux: editing by hand, speaker notes, slides, pins, the chat with Claude or Codex,
 Undo/Redo, live reload when files change on the server, layout checks, attaching figures, audio and
 PDFs, `git-setup` and the PowerPoint import. Some features use programs on the server, and are on when
 they are installed (on Debian or Ubuntu: `sudo apt install poppler-utils libreoffice-impress ffmpeg`):
@@ -351,7 +351,7 @@ they are installed (on Debian or Ubuntu: `sudo apt install poppler-utils libreof
 | Pictures of PowerPoint slides in the import (thumbnails, diagrams) | LibreOffice (`soffice`) and Poppler |
 | Waveforms of audio other than WAV in the import | ffmpeg |
 
-Without them the editor says what is missing (hover over "Server: Linux (beta)"), and the assistant is told
+Without them the editor says what is missing (hover over "Server: Linux"), and the assistant is told
 which commands are not available. LibreOffice may draw some slides a little differently from PowerPoint;
 the pictures are references and figures, the slides themselves are rebuilt from the file. Chromium from snap may not be
 allowed to use hidden folders in your home folder such as `~/.pindeck-v3`; if screenshots fail with it, set
@@ -556,8 +556,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * A deck's own scripts run sandboxed in the editor and in Present: they cannot use `localStorage`, cookies
   or the editor page. A deck that needs them for its slides to work should catch the error.
 * Decks are `.html` files; `.htm` files are not listed or opened as decks.
-* Linux (beta): pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
-  Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server-beta)).
+* Linux: pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
+  Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 
 ## Versions
 
@@ -620,6 +620,11 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * **3.0.0-beta.1**: Claude and Codex adapters, discovered model/effort menu, explicit provider
   switching with optional handover, curated model lists, a separate effort selector with per-model
   preferences, restricted Codex tools, and separate v3 runtime state. On npm as `pindeck@beta`.
+
+* **2.11**: screenshots in the chat. A screenshot sent with a message, and one Claude reads, shows as
+  a small picture that opens larger with a click (Esc or a click closes it). PinDeck keeps the 40
+  newest screenshots of a deck; an older one says "no longer kept". Chats from before 2.11 keep their
+  plain label. (In 3.x since 3.1.0-beta.1.)
 
 * **2.10**: decks with their own file names and shared files, decks made without reveal.js, and Claude
   working on the whole deck.
