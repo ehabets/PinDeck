@@ -553,7 +553,6 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * One writer at a time: PinDeck is not made for editing the same deck from two editors or tools at once.
 * A deck's own scripts run sandboxed in the editor and in Present: they cannot use `localStorage`, cookies
   or the editor page. A deck that needs them for its slides to work should catch the error.
-* Decks are `.html` files; `.htm` files are not listed or opened as decks.
 * Linux: pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 
