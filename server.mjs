@@ -83,6 +83,7 @@ const deckKey = (NAMED ? `${path.basename(DECK_DIR)}-${DECK_NAME}` : path.basena
   crypto.createHash("sha1").update(NAMED ? path.join(DECK_DIR, DECK_FILE) : DECK_DIR).digest("hex").slice(0, 8);
 const STATE_DIR = path.join(HOME_DIR, "decks", deckKey);
 const SHOT_DIR = path.join(STATE_DIR, "shots");
+const SHOT_NAME = /^[\w-]+\.png$/;                    // what takeShot writes, and all /shots/ serves
 const PDF_DIR = path.join(STATE_DIR, "attachments");   // attached PDFs: reading material, not part of the deck
 /* pindeck login: a new one-time login link from the running server, asked with the token in its server
    file (readable only by this user) */
@@ -571,7 +572,12 @@ function toolSummary(name, input = {}) {
     return !r || r.startsWith("..") ? path.basename(p) : r;
   };
   switch (name) {
-    case "Read": return { name: "Read", detail: base(input.file_path) };
+    case "Read": {
+      // a screenshot PinDeck took: the chat shows it, by its name in the shots folder
+      const f = input.file_path && path.resolve(DECK_DIR, input.file_path);
+      const shot = f && path.dirname(f) === SHOT_DIR && SHOT_NAME.test(path.basename(f)) ? path.basename(f) : undefined;
+      return { name: "Read", detail: base(input.file_path), shot };
+    }
     case "Edit": case "MultiEdit": case "Write": return { name: "Edit", detail: base(input.file_path) };
     case "Bash": {
       // a PinDeck command only when the whole command is one: a script that ends in `cli.mjs layout`
@@ -1171,7 +1177,13 @@ const server = http.createServer(async (req, res) => {
       const f = safeJoin(path.join(EDITOR_DIR, "public"), p.slice(8));
       return f ? serveFile(res, f, null, req) : text(res, 403, "Forbidden");
     }
-    if ((p.startsWith("/deck/") || p.startsWith("/files/")) && !ok) return text(res, 403, "Not logged in");
+    if ((p.startsWith("/deck/") || p.startsWith("/files/") || p.startsWith("/shots/")) && !ok) return text(res, 403, "Not logged in");
+    // /shots/: the screenshots of this deck, for the chat; only PNG files directly in its shots folder
+    if (p.startsWith("/shots/")) {
+      const name = decodeURIComponent(p.slice(7));
+      if (req.method !== "GET" || !SHOT_NAME.test(name)) return text(res, 404, "Not found");
+      return serveFile(res, path.join(SHOT_DIR, name), null, req);
+    }
     let snap;
     if (req.method === "GET" && (snap = p.match(/^\/(?:deck|files)\/(?:.*\/)?__pindeck-print-([\w-]+)\.html$/))) {
       const html = snapshots.get(snap[1]);
@@ -1254,7 +1266,8 @@ const server = http.createServer(async (req, res) => {
       // only files PinDeck itself stored can be attached
       b.attachments = (b.attachments || []).filter((a) => a && state.uploads.has(a.path) && fs.existsSync(uploadFile(a.path)));
       b.attachments.forEach((a) => { state.uploads.delete(a.path); if (a.waveform) state.uploads.delete(a.waveform); });
-      const entry = addEntry({ kind: "user", text: b.text, screenshot: !!screenshot,
+      // the file's name, so the chat can show it (true in chats from before 2.11)
+      const entry = addEntry({ kind: "user", text: b.text, screenshot: screenshot ? path.basename(screenshot.path) : false,
         attachments: b.attachments.map((a) => ({ path: a.path, kind: a.kind, name: a.name })),
         selection: b.selection ? { eid: b.selection.eid, label: b.selection.eid.replace(/^[^/]+\//, ""), slide: b.selection.slide.index + 1 } : null,
         pins: (b.pins || []).map((p) => ({ n: p.n, eid: p.eid, label: label(p), slide: p.slide.index + 1 })) });

@@ -571,17 +571,25 @@ function md(s) {
   }).join("");
   return out.replace(/<p>\u0000(\d+)\u0000<\/p>|\u0000(\d+)\u0000/g, (_, a, b) => `<pre>${blocks[a ?? b]}</pre>`);
 }
+/* A screenshot in the chat: a small picture that opens larger. Chats from before 2.11 recorded no file
+   name (true); the server keeps only the newest 40, so an older one fails to load and says so. */
+function shotChip(name, label = " screenshot") {
+  if (typeof name !== "string") return `<span class="chip">📷${label}</span>`;
+  const src = `/shots/${encodeURIComponent(name)}`;
+  return `<button type="button" class="chip shot-chip" data-shot="${esc(src)}" title="Open the screenshot">` +
+    `<img src="${esc(src)}" alt="">${label}</button>`;
+}
 function entryHtml(e) {
   switch (e.kind) {
     case "user":
       return `${esc(e.text)}${e.pins?.length || e.screenshot || e.selection || e.attachments?.length ? `<div class="chips">${e.selection ?
         `<span class="chip sel" title="${esc(e.selection.eid)}"><span class="n">▢</span> S${e.selection.slide} · ${esc(e.selection.label)}</span>` : ""}${(e.pins || []).map((p) =>
         `<span class="chip" title="${esc(p.eid)}"><span class="n">${p.n}</span> S${p.slide} · ${esc(p.label || p.eid)}</span>`).join("")}${
-        e.screenshot ? '<span class="chip">📷 screenshot</span>' : ""}${(e.attachments || []).map((a) =>
+        e.screenshot ? shotChip(e.screenshot) : ""}${(e.attachments || []).map((a) =>
         `<span class="chip att-chip" title="${esc(a.path)}">${a.kind === "image" ? `<img src="/deck/${esc(a.path)}" alt="">` : a.kind === "pdf" ? "📄" : "🔊"} ${esc(a.path.split("/").pop())}</span>`).join("")}</div>` : ""}`;
     case "assistant": return md(e.text);
     case "tool":
-      return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
+      return `<span><span class="tn">${esc(e.name)}</span> ${esc(e.detail || "")}${e.shot ? " " + shotChip(e.shot, "") : ""}${e.error ? `<span class="err">${esc(e.error)}</span>` : ""}</span>`;
     case "edit": {
       const t = state.turns.get(e.turnId);
       return `<span class="files ${t?.undone ? "undone" : ""}">✎ ${esc(e.label)}</span>
@@ -641,6 +649,12 @@ chatEl.addEventListener("click", async (e) => {
     $("diff-dialog").showModal();
     return;
   }
+  const shot = e.target.closest("[data-shot]");
+  if (shot) {
+    $("shot-img").src = shot.dataset.shot;
+    $("shot-dialog").showModal();
+    return;
+  }
   const u = e.target.closest("[data-undo]");
   if (u) {
     u.disabled = true;
@@ -651,6 +665,14 @@ chatEl.addEventListener("click", async (e) => {
   }
 });
 $("diff-close").onclick = () => $("diff-dialog").close();
+// a picture that is gone: error events do not bubble, so they are caught on the way down
+chatEl.addEventListener("error", (e) => {
+  const chip = e.target.closest?.(".shot-chip");
+  if (!chip) return;
+  chip.outerHTML = '<span class="chip gone" title="Only the 40 newest screenshots are kept">📷 no longer kept</span>';
+}, true);
+// Esc closes it (as any dialog); so does a click anywhere on it
+$("shot-dialog").onclick = () => $("shot-dialog").close();
 
 function setBusy(busy) {
   state.busy = busy;

@@ -253,7 +253,7 @@ show and commit as usual. Clones without the filter configured simply see the fi
 | Undo, redo | `⌘Z` / `⇧⌘Z` or the toolbar arrows. One history for your hand edits and Claude's changes. |
 | Pin elements | Press `P` (or the Pin button), click elements; each click gets a number. Click a marker to remove it, `Esc` to stop. |
 | Ask Claude | Write in the sidebar and refer to pins by number: "1: align with 2, make 3 smaller". The selected element is sent too, so "make this smaller" works. `Enter` sends, `Shift+Enter` adds a new line. |
-| Visual questions | **+** in the chat, then **Screenshot**: the current slide with its pin markers is attached when you send. |
+| Visual questions | **+** in the chat, then **Screenshot**: the current slide with its pin markers is attached when you send. The chat shows it, and the screenshots Claude reads, as a small picture; click it to see it larger. |
 | Review | Each answer ends with the changed files, a **Diff** button and an **Undo** button (most recent change). |
 | Stop | **Stop** interrupts Claude; the conversation continues. **New chat** starts over. |
 | New slide | **＋ New slide** above the slide list: a **content slide** (title and bullets), a **section divider**, or a **duplicate** of the current slide. It is added after the current slide, modelled on the deck's own slides, and its title opens for typing. |
@@ -396,6 +396,10 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Versions
 
+* **2.11**: screenshots in the chat. A screenshot sent with a message, and one Claude reads, shows as
+  a small picture that opens larger with a click (Esc or a click closes it). PinDeck keeps the 40
+  newest screenshots of a deck; an older one says "no longer kept". Chats from before 2.11 keep their
+  plain label.
 * **2.10**: decks with their own file names and shared files, decks made without reveal.js, and Claude
   working on the whole deck.
   - A deck file by name: `pindeck path/to/talk.html` (a folder still opens its `index.html`). Several

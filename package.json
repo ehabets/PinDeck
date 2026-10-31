@@ -1,6 +1,6 @@
 {
   "name": "pindeck",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "description": "PinDeck: an editor for HTML slide decks on macOS, and on Linux (beta) through an SSH tunnel. Pin elements, describe the change, and Claude Code edits the slides.",
   "keywords": [
     "slides",

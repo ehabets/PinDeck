@@ -195,3 +195,24 @@ test('Moving a horizontal slide to the end places it after the final vertical st
   assert.equal(intro.parent.attrs.class.value, 'slides');
   assert.match(moveSlide(verticalDeck, 'a', 'intro').error, /vertical stack/);
 });
+
+// The /shots/ route: only PNG files directly in the deck's shots folder.
+function shotsRoute(pathname) {
+  let served = null, status = null;
+  const SHOT_NAME = new RegExp(server.match(/const SHOT_NAME = \/(.+)\/;/)[1]);
+  const context = vm.createContext({
+    p: pathname, req: { method: 'GET' }, res: {}, SHOT_DIR: '/state/shots', SHOT_NAME, decodeURIComponent,
+    path: { join: (...a) => a.join('/') },
+    serveFile(_res, f) { served = f; }, text(_res, code) { status = code; },
+  });
+  const route = server.slice(server.indexOf('    if (p.startsWith("/shots/")) {'), server.indexOf('    let snap;'));
+  vm.runInContext(`(() => { ${route} })()`, context);
+  return served || status;
+}
+
+test('The chat serves a screenshot by its name, and nothing else from the state folder', () => {
+  assert.equal(shotsRoute('/shots/title-1793022713158.png'), '/state/shots/title-1793022713158.png');
+  for (const p of ['/shots/..%2Fchat.json', '/shots/../chat.json', '/shots/server.json', '/shots/a/b.png', '/shots/']) {
+    assert.equal(shotsRoute(p), 404, p);
+  }
+});
