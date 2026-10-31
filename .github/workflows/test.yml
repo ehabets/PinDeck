@@ -5,7 +5,7 @@ name: Test
 
 on:
   push:
-    branches: [main, "linux-*", "v3*"]   # v3*: the v3 betas (v3-beta, v3.2.0-beta), released from those branches
+    branches: [main, "2.x", "linux-*", "v3*"]   # 2.x: fixes for PinDeck 2; v3*: the branches the v3 betas came from
   pull_request:
 
 permissions:

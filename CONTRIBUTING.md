@@ -82,7 +82,8 @@ stages the version on npm. It goes live once a maintainer approves it with 2FA, 
 
 ### Beta releases
 
-Keep v3 preview work on `v3-beta` while `main` remains stable. Public betas use versions such as
+Work towards a new major version stays on a branch of its own (for version 3 it was `v3-beta`) while `main`
+remains stable; fixes for PinDeck 2 go on the `2.x` branch. Public betas use versions such as
 `3.0.0-beta.1`, with an annotated Git tag `v3.0.0-beta.1`. Increment the final number for each beta.
 Create a GitHub prerelease with known limitations and installation instructions.
 

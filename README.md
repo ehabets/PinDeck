@@ -1,10 +1,9 @@
 # PinDeck
 
-> **macOS, and Linux as a beta · Version 3 beta preview** (`3.2.0-beta.1`). On Linux, PinDeck runs as a
-> headless server that you use from your Mac's browser through an SSH tunnel (see
-> [Running on a Linux server](#running-on-a-linux-server)). Windows is not supported. The beta is on
-> npm’s `beta` channel and the [`v3-beta`](https://github.com/ehabets/PinDeck/tree/v3-beta) branch; stable
-> releases (`npx pindeck`) stay on 2.x. See installation below.
+> **macOS and Linux · Version 3** (`3.2.0`). On Linux, PinDeck runs as a headless server that you use
+> from your Mac's browser through an SSH tunnel (see [Running on a Linux server](#running-on-a-linux-server)).
+> Windows is not supported. Coming from PinDeck 2: version 3 keeps its settings and chats in
+> `~/.pindeck-v3`, apart from 2.x (see [Models, providers and configuration](#models-providers-and-configuration)).
 
 **Pin it. Say it. Done.** PinDeck is a local editor for HTML slide decks (reveal.js): the slides on
 the left, the slide in the middle, and a chat with Claude Code or OpenAI Codex on the right. You click elements to
@@ -37,24 +36,23 @@ npm installation rejects other operating systems. Overriding that check does not
 supported. Running the server from a cloned repository on another OS shows a local support notice
 instead of opening the deck or starting a backend.
 
-Install the beta from npm:
+Install from npm:
 
 ```bash
-npx pindeck@beta /path/to/deck
-# Or select this exact beta:
-npx pindeck@3.2.0-beta.1 /path/to/deck
+npx pindeck /path/to/deck
 ```
 
-Or run it from the `v3-beta` branch, which includes the example deck:
+Or run it from source, which includes the example deck:
 
 ```bash
-git clone --branch v3-beta --single-branch https://github.com/ehabets/PinDeck.git PinDeck-v3
-cd PinDeck-v3
+git clone https://github.com/ehabets/PinDeck.git
+cd PinDeck
 node front.mjs ocean-example
 ```
 
-Use `npx pindeck@latest /path/to/deck` for the stable release; the beta channel does not replace it.
-Releases, with notes for each beta, are on [GitHub](https://github.com/ehabets/PinDeck/releases).
+PinDeck 2 stays available as `npx pindeck@2 /path/to/deck` (source: the
+[`2.x`](https://github.com/ehabets/PinDeck/tree/2.x) branch). Releases, with notes for each version, are on
+[GitHub](https://github.com/ehabets/PinDeck/releases).
 
 Then open the login link PinDeck prints (`PinDeck: http://127.0.0.1:5180/login?code=...`). It works
 once and logs this browser in; for a new one, run `pindeck login` (or `node front.mjs login`). On a Mac,
@@ -98,7 +96,7 @@ the deck, whichever port it runs on.
   Windows is not supported. The npm package declares `"os": ["darwin", "linux"]`, so normal npm
   installation rejects other operating systems. This check can be overridden; bypassing it does not make
   those platforms supported. Source launches on unsupported platforms show a local support page without
-  opening the deck or starting a backend. Native Windows support is a possible v4 feature, not part of this beta.
+  opening the deck or starting a backend. Native Windows support is a possible v4 feature, not part of version 3.
 * **Screenshots and PDF export:** require Chrome, Chromium, Edge or Brave where the server runs.
 * **PDF input through Codex:** pages are rendered with macOS PDFKit, or Poppler on Linux. Page-text
   extraction uses `osascript` and is macOS-only; on Linux Codex reads the rendered page image. Claude uses
@@ -266,7 +264,7 @@ from resuming the other's IDs. `--provider` and `--model` override the deck's se
 is back on the deck's own choice. A later menu selection is saved. `CLAUDE_BIN` and `CODEX_BIN` override
 executable paths. `CLAUDE_MODEL`, which PinDeck 2 read, is not used: PinDeck warns and names `--model`.
 
-The v3 preview defaults to **`~/.pindeck-v3`**, keeping v2 settings and conversations separate. It does
+PinDeck 3 defaults to **`~/.pindeck-v3`**, keeping v2 settings and conversations separate. It does
 not copy the v2 directory automatically; `config.json` and `decks/*/chat.json` can be copied over by hand
 (asset roots too: they are in config.json). Never give both versions the same `PINDECK_HOME`: they keep files
 of the same names in different formats and overwrite each other's settings and chats. PinDeck 3 warns at
@@ -560,6 +558,18 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 
 ## Versions
+
+* **3.2.0**: PinDeck 3, the first stable release of version 3: everything from the 3.0, 3.1 and 3.2 betas
+  below. Compared with 2.11:
+  - OpenAI Codex as a second assistant next to Claude Code, with the models and efforts each backend
+    offers; each deck keeps its own provider, model and effort.
+  - Several decks on one port: a deck menu above the slide, each deck with its own chat, assistant
+    session and Undo.
+  - Deck pages run sandboxed, so a deck's script cannot use the API or read other decks.
+  - Linux is no longer a beta.
+  - Settings and chats are kept in `~/.pindeck-v3`, apart from PinDeck 2's `~/.pindeck`; nothing is copied
+    over (see [Models, providers and configuration](#models-providers-and-configuration)). PinDeck 2 stays
+    on npm as `pindeck@2`.
 
 * **3.2.0-beta.1**: fixes from a code review and a round of user tests.
   - Security: deck pages run sandboxed, so a deck's script can no longer use the API, read other decks or
