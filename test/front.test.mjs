@@ -40,7 +40,9 @@ function fixture(t) {
   });
   const talks = path.join(root, "talks 'n' decks");
   fs.cpSync(EXAMPLE, talks, { recursive: true });
-  const deck = fs.readFileSync(path.join(talks, "index.html"), "utf8");
+  // the example deck has ids once PinDeck has opened it (git's pindeck-ids filter hides them): start without
+  const deck = fs.readFileSync(path.join(talks, "index.html"), "utf8").replace(/ data-eid="[^"]*"/g, "");
+  fs.writeFileSync(path.join(talks, "index.html"), deck);
   fs.writeFileSync(path.join(talks, "second.html"), deck);
   fs.writeFileSync(path.join(talks, "notes.html"), "<!doctype html><title>Notes</title><p>Not slides.</p>\n");
   for (const d of ["lecture", "export", "node_modules/pkg", "lecture/old/older"]) {

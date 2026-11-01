@@ -243,6 +243,7 @@ function staleEdit(res, b) {
 const text = (res, code, s) => { res.writeHead(code, { "content-type": "text/plain; charset=utf-8" }); res.end(s); };
 async function body(req) {
   let s = "";
+  req.setEncoding("utf8");
   for await (const c of req) { s += c; if (s.length > 5e6) throw new Error("body too large"); }
   return s ? JSON.parse(s) : {};
 }
@@ -576,7 +577,7 @@ function slidesInstructions() {
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
 function lockedPaths() {
   const { files, folders } = otherDecks();
-  return [...LOCKED, "vendor/**", ".git/**", ...files, ...folders.map((f) => `${f}/**`)];
+  return [...LOCKED, "vendor/**", ".git", ".git/**", ...files, ...folders.map((f) => `${f}/**`)];
 }
 /* The other decks in this deck's folder: its other .html files, and the subfolders that hold a deck of their
    own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */
@@ -612,10 +613,9 @@ function othersWorkedSince(start) {
   for (const f of files) {
     try {
       const o = JSON.parse(fs.readFileSync(path.join(TURNS_DIR, f), "utf8"));
-      let alive = true;
-      try { process.kill(o.pid, 0); } catch (e) { alive = e.code === "EPERM"; }
+      const running = alive(o.pid);
       // a turn still open in a server that is gone ended when that server did, at the latest
-      if (o.turns.some((x) => (x.end ?? (alive ? now : x.start)) >= start)) names.push(o.deck);
+      if (o.turns.some((x) => (x.end ?? (running ? now : x.start)) >= start)) names.push(o.deck);
     } catch {}
   }
   return names;
@@ -671,13 +671,20 @@ function makeSession(choice) {
     args: () => ["--append-system-prompt", systemPrompt + slidesInstructions() + deckInstructions(),
       "--setting-sources", "", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands",   // no settings files, no MCP servers or connectors
       "--permission-mode", "default", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
-      "--allowedTools", "Read", "Glob", "Grep", "Edit(./**)", "Write(./**)",
+      "--allowedTools", ...readRules(), "Edit(./**)", "Write(./**)",
       ...["layout", "shot", "slides", "pdf", "pdf-figure"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
       "--disallowedTools", ...lockedPaths().flatMap((f) => [`Edit(./${f})`, `Write(./${f})`]),
       ...(choice.model ? ["--model", choice.model] : []), ...(choice.effort ? ["--effort", choice.effort] : [])],
   });
   agent.initialEvent = () => initial;
   return agent;
+}
+/* Claude reads what Codex's tools may read (agentTools' readDirs): the deck, screenshots, attached PDFs and
+   asset roots, each by its path and its real path ("//" starts an absolute path in a rule) */
+function readRules() {
+  const dirs = [SHOT_DIR, PDF_DIR, ...ASSET_ROOTS].flatMap((d) => { try { return [d, fs.realpathSync(d)]; } catch { return [d]; } });
+  const globs = ["./**", ...new Set(dirs.map((d) => `/${d}/**`))];
+  return ["Read", "Glob", "Grep"].flatMap((tool) => globs.map((g) => `${tool}(${g})`));
 }
 const providerAvailable = (provider) => detectCapabilities()[provider];
 /* Every backend process that is stopped is waited for on exit: the discovery helpers, the session a switch
@@ -892,7 +899,7 @@ function handleEvent(ev) {
 function startTurn(promptText, userEntry) {
   // every deck file as it is now: the assistant may change any of them (not brand.css or vendor/), and undo
   // takes back all it changed
-  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), gitConfig: readDeck(".git/config"), scan: scanDeck(), touched: new Set(),
+  state.turn = { id: userEntry.id, before: snapshot([...EDITABLE, ...LOCKED]), gitConfig: readDeck(".git/config"), hadGit: fs.existsSync(path.join(DECK_DIR, ".git")), scan: scanDeck(), touched: new Set(),
     time: { start: Date.now(), end: null } };
   logTurnTime(state.turn.time);
   state.busy = true;
@@ -930,6 +937,12 @@ function finishTurn({ error, cost, duration, denials = [] }) {
       restored.push(".git/config");
     } catch (e) { console.error(e.message); }
   }
+  // a .git file ("gitdir: elsewhere") points git at another config, which the check above does not see
+  const dotGit = path.join(DECK_DIR, ".git");
+  if (!turn.hadGit && fs.lstatSync(dotGit, { throwIfNoEntry: false })?.isDirectory() === false) {
+    fs.rmSync(dotGit, { force: true });
+    restored.push(".git");
+  }
   toolEntries.clear();
   const eid = runEidPass();
   const found = scanChanges(turn.scan, scanDeck());
@@ -952,13 +965,14 @@ function finishTurn({ error, cost, duration, denials = [] }) {
   const deletedFiles = [];
   for (const rel of turn.importedFiles || []) {
     const abs = path.join(DECK_DIR, rel);
-    if (!fs.existsSync(abs) || EDITABLE.some((f) => (after[f] || "").includes(rel))) continue;
+    if (!fs.existsSync(abs) || EDITABLE.some((f) => (readDeck(f) || "").includes(rel))) continue;
     deletedFiles.push({ rel, data: fs.readFileSync(abs) });
     fs.rmSync(abs, { force: true });
   }
   const t = { id: turn.id, kind: "agent", provider: settings.provider, conversation: state.conversation, before, after, files, deletedFiles, undone: false };
-  if (files.length) { state.turns.push(t); state.redo = []; }
-  addEntry({ kind: "turn", turnId: files.length ? t.id : null, files, error, cost, duration,
+  const kept = files.length || deletedFiles.length;
+  if (kept) { state.turns.push(t); state.redo = []; }
+  addEntry({ kind: "turn", turnId: kept ? t.id : null, files, error, cost, duration,
     denials, restored, newIds: eid.assigned.length });
   if (deletedFiles.length) addEntry({ kind: "notice", text: `Removed ${deletedFiles.map((f) => f.rel).join(", ")}: replaced, and no longer used.` });
   if (notOurs.length) addEntry({ kind: "notice", text: `${notOurs.join(", ")} changed during this turn while the assistant of ` +
@@ -1243,11 +1257,7 @@ function undoConflicts(t, direction) {
   const go = direction === "undo" ? t.addedFiles || [] : t.deletedFiles || [];
   // a file to bring back or remove through a symlink out of the deck: not done (deckPath), so not begun
   for (const { rel } of [...comeBack, ...go]) { try { deckPath(rel); } catch { files.push(rel); } }
-  for (const { rel, data } of comeBack) {
-    const abs = path.join(DECK_DIR, rel);
-    if (fs.existsSync(abs) && !sameContent(abs, data)) files.push(rel);
-  }
-  for (const { rel, data } of go) {
+  for (const { rel, data } of [...comeBack, ...go]) {
     const abs = path.join(DECK_DIR, rel);
     if (fs.existsSync(abs) && !sameContent(abs, data)) files.push(rel);
   }
@@ -1330,8 +1340,7 @@ async function applyImport(imp, numbers, afterEid, refine = false) {
   const afterIdx = found < 0 ? slides.length - 1 : found;   // no such slide (any more): at the end
   const after = slides[afterIdx];
   const css = (readDeck("theme.css") || "") + (readDeck("brand.css") || "");
-  const prefix = path.basename(imp.name, path.extname(imp.name)).normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").split("-").slice(0, 3).join("-") || "import";
+  const prefix = slug(path.basename(imp.name, path.extname(imp.name))).split("-").slice(0, 3).join("-");
   const r = await buildImport({ model: imp.model, numbers, pdf, workDir: imp.dir, deckDir: DECK_DIR, deckHtml: html0, css, after: afterIdx, prefix });
   // building takes a while (pictures are cut from the slides): a change made meanwhile must not be overwritten
   if (EDITABLE.some((f) => readDeck(f) !== before[f])) throw new Error("The deck changed during the import. Import again.");

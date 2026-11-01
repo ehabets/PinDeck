@@ -492,8 +492,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   from `lib/system-prompt.md` and the deck's `CLAUDE.md` and `AGENTS.md`. Codex model and effort changes
   reuse the active thread writer and apply to the next turn. Claude changes and provider switches prepare
   a replacement process before retiring the old one. Events from replaced sessions are ignored.
-* **Permissions.** The assistant may read files, edit and create files in the deck folder, and run the
-  editor's CLI. Nothing else: no other commands, and no edits to `brand.css`, `vendor/`, `.git/` or, for a
+* **Permissions.** The assistant may read the deck folder, its screenshots, attached PDFs and asset roots,
+  edit and create files in the deck folder, and run the editor's CLI. Nothing else: no other commands, and no edits to `brand.css`, `vendor/`, `.git/` or, for a
   named deck file, the other decks in its folder. Claude Code loads no settings files and no MCP servers,
   so no allow rule in your own, the deck's or a parent folder's settings widens this. Codex has no shell
   and no file access of its own: it reads and edits through PinDeck's own tools, which apply the same

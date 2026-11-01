@@ -195,9 +195,17 @@ for (const platform of ["linux", "darwin"]) {
     const commands = ["layout", "shot", "slides", "pdf", "pdf-figure"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
     assert.ok(commands.every((c) => a.includes(c)), "the CLI permissions are the quoted command, one per PinDeck command");
     const allowed = a.slice(a.indexOf("--allowedTools") + 1, a.indexOf("--disallowedTools"));
-    assert.deepEqual(allowed, ["Read", "Glob", "Grep", "Edit(./**)", "Write(./**)", ...commands], "no broader permissions");
+    const reads = allowed.filter((r) => /^(Read|Glob|Grep)\(/.test(r));
+    assert.deepEqual(allowed, [...reads, "Edit(./**)", "Write(./**)", ...commands], "no broader permissions");
+    // reads: the deck, and the screenshots and attached PDFs in PinDeck's state, as Codex's tools
+    const homes = [fx.home, fs.realpathSync(fx.home)].map((h) => `/${h}/`);
+    for (const tool of ["Read", "Glob", "Grep"]) {
+      const globs = reads.filter((r) => r.startsWith(tool + "(")).map((r) => r.slice(tool.length + 1, -1));
+      assert.equal(globs[0], "./**");
+      assert.ok(globs.length > 2 && globs.slice(1).every((g) => homes.some((h) => g.startsWith(h)) && g.endsWith("/**")), globs.join(" "));
+    }
     assert.deepEqual(denied(a), ["Edit(./brand.css)", "Write(./brand.css)", "Edit(./vendor/**)", "Write(./vendor/**)",
-      "Edit(./.git/**)", "Write(./.git/**)"], "the deck folder except brand.css, vendor/ and .git/");
+      "Edit(./.git)", "Write(./.git)", "Edit(./.git/**)", "Write(./.git/**)"], "the deck folder except brand.css, vendor/ and .git");
 
     // a hand edit (speaker notes) is saved into the deck copy
     const eid = firstSlideEid(fx.deck);
@@ -993,6 +1001,26 @@ test("An assistant that changes .git/config: restored after the turn, before Pin
   const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
   assert.deepEqual(turn.restored, [".git/config"]);
   assert.equal(fs.readFileSync(path.join(fx.deck, ".git", "config"), "utf8"), "[core]\n\tbare = false\n");
+});
+
+test("An assistant that writes a .git file (gitdir: elsewhere): removed after the turn, before PinDeck runs git", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  assert.equal((await s.api("message", { text: "fake-op write .git" })).status, 200);
+  const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn");
+  assert.ok(turn.restored.includes(".git"));
+  assert.ok(!fs.existsSync(path.join(fx.deck, ".git")));
+});
+
+test("A large body with non-ASCII text arrives whole, whatever the chunk borders", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const st = (await s.api("status")).data;
+  const text = "ü€😀".repeat(60000);   // 2-, 3- and 4-byte characters: chunk borders fall inside some of them
+  const r = await s.api("notes", { eid: firstSlideEid(fx.deck), text, rev: st.rev });
+  assert.equal(r.status, 200);
+  const html = fs.readFileSync(path.join(fx.deck, "index.html"), "utf8");
+  assert.ok(html.includes(text) && !html.includes("\uFFFD"));
 });
 
 test("pdf-figure finds a PDF of the deck by its real path when the deck's path goes through a symlink", async (t) => {

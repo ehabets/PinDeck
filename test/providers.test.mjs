@@ -200,7 +200,7 @@ test('Claude session grants only supported PinDeck helper commands', async () =>
  const ctx=vm.createContext({ClaudeSession:class {constructor(options){Object.assign(this,options)}},
   DECK_DIR:'/deck',ORIGIN:'http://localhost',TOKEN:'test',session:null,systemPrompt:'instructions',slidesInstructions:()=>'',deckInstructions:()=>'',
   agentEnv:()=>({}),lockedPaths:()=>['brand.css','vendor/**','.git/**'],
-  CLI_CMD:'node /app/cli.mjs',EDITABLE:['index.html','theme.css'],LOCKED:['brand.css']});
+  CLI_CMD:'node /app/cli.mjs',EDITABLE:['index.html','theme.css'],LOCKED:['brand.css'],fs,SHOT_DIR:'/state/shots',PDF_DIR:'/state/attachments',ASSET_ROOTS:[]});
  vm.runInContext(source.slice(source.indexOf('function makeSession(choice)'),source.indexOf('/* What each backend offers.')),ctx);
  const agent=vm.runInContext('makeSession({provider:"claude",model:"sonnet",effort:"low"})',ctx);
  const all=agent.args(),args=all.slice(all.indexOf('--allowedTools')+1,all.indexOf('--disallowedTools'));

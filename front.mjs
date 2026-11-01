@@ -243,6 +243,7 @@ function follow(st, tab, key) {
 }
 async function readJson(req) {
   let s = "";
+  req.setEncoding("utf8");
   for await (const c of req) { s += c; if (s.length > 10000) throw new Error("body too large"); }
   return s ? JSON.parse(s) : {};
 }
