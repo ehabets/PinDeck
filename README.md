@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 3** (`3.2.0`). On Linux, PinDeck runs as a headless server that you use
+> **macOS and Linux · Version 3** (`3.3.0`). On Linux, PinDeck runs as a headless server that you use
 > from your Mac's browser through an SSH tunnel (see [Running on a Linux server](#running-on-a-linux-server)).
 > Windows is not supported. Coming from PinDeck 2: version 3 keeps its settings and chats in
 > `~/.pindeck-v3`, apart from 2.x (see [Models, providers and configuration](#models-providers-and-configuration)).
@@ -557,6 +557,13 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 
 ## Versions
+
+* **3.3.0**: fixes from a code audit.
+  - After a PowerPoint import, refining the slides no longer deletes pictures that the deck still uses
+    (when the turn was stopped, failed or only changed `theme.css`); Undo brings removed pictures back.
+  - Long texts with non-ASCII characters (large notes, tables, SVG) no longer get broken characters.
+  - Claude reads only the deck, its screenshots, attached PDFs and asset roots, as Codex already did, and
+    cannot create a `.git` file in the deck folder.
 
 * **3.2.0**: PinDeck 3, the first stable release of version 3: everything from the 3.0, 3.1 and 3.2 betas
   below. Compared with 2.11:
