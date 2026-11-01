@@ -113,7 +113,8 @@ const denied = (argv) => {
   const i = argv.indexOf("--disallowedTools") + 1, j = argv.findIndex((x, k) => k >= i && x.startsWith("--"));
   return argv.slice(i, j < 0 ? undefined : j);
 };
-const fakeLog = (fx) => fs.existsSync(fx.log) ? fs.readFileSync(fx.log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+// complete lines only: the fake agent may be writing the last one as the test reads
+const fakeLog = (fx) => fs.existsSync(fx.log) ? fs.readFileSync(fx.log, "utf8").split("\n").slice(0, -1).filter(Boolean).map((l) => JSON.parse(l)) : [];
 const fakePids = (fx) => [...new Set(fakeLog(fx).filter((e) => e.event === "start").map((e) => e.pid))];
 const claudeStart = (fx) => fakeLog(fx).find((e) => e.event === "start" && e.argv[0] !== "app-server");   // not the fake codex
 const firstSlideEid = (deck) => /<section[^>]*data-eid="([^"]+)"/.exec(fs.readFileSync(path.join(deck, "index.html"), "utf8"))[1];

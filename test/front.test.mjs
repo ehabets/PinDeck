@@ -54,7 +54,7 @@ function fixture(t) {
 const env = (fx, more = {}) => ({ ...process.env, PINDECK_HOME: fx.home, CLAUDE_BIN: FAKE_AGENT, CODEX_BIN: FAKE_AGENT,
   FAKE_AGENT_LOG: fx.log, CHROME_BIN: path.join(fx.root, "no-chrome"), PINDECK_LINUX_CHROME: "", PORT: "", ...more });
 const agentPids = (fx) => fs.existsSync(fx.log)
-  ? [...new Set(fs.readFileSync(fx.log, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((e) => e.event === "start").map((e) => e.pid))] : [];
+  ? [...new Set(fs.readFileSync(fx.log, "utf8").split("\n").slice(0, -1).map((l) => JSON.parse(l)).filter((e) => e.event === "start").map((e) => e.pid))] : [];
 
 function spawnFront(fx, args, more = {}) {
   const child = spawn(process.execPath, [FRONT, ...args], { env: env(fx, more), stdio: ["ignore", "pipe", "pipe"], detached: true });
