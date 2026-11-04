@@ -34,7 +34,7 @@ import { printLayout, printPdf, chromeReason, ROOT_ARGS, PDF_HEAD_TAG, PDF_PAGE_
 import { readPptx } from "./lib/pptx.mjs";
 import { exportPdf as pptxToPdf, renderJobs, renderAvailable, pdfInfo } from "./lib/pptx-render.mjs";
 import { buildImport, planSlides } from "./lib/pptx-import.mjs";
-import { isSupportedPlatform, detectCapabilities, publicCapabilities, capabilityPrompt, parsePort, cliCommand, findExecutable } from "./lib/capabilities.mjs";
+import { isSupportedPlatform, detectCapabilities, publicCapabilities, capabilityPrompt, parsePort, cliCommand, useCliCommand, cliRefusal, findExecutable } from "./lib/capabilities.mjs";
 import { unsupportedMessage } from "./lib/frameworks.mjs";
 import { readInstructions } from "./lib/instructions.mjs";
 import { writeAtomic, sameContent, revision, scanFiles, scanChanges } from "./lib/deck-files.mjs";
@@ -625,12 +625,12 @@ function othersWorkedSince(start) {
    MCP servers have no place in a slide editor). That also skips CLAUDE.md files, so the deck's own go
    into the system prompt instead, read afresh at each session start: CLAUDE.md and AGENTS.md (the name
    other coding agents read), with their @path imports (lib/instructions.mjs). Parent folders' files are
-   not loaded; a deck imports shared rules explicitly. Decks copied from the example call the CLI as
-   `node ../cli.mjs`, which is right only next to PinDeck: that becomes this server's command. */
+   not loaded; a deck imports shared rules explicitly. The CLI path written there becomes this server's
+   command (useCliCommand). */
 function deckInstructions() {
   return ["CLAUDE.md", "AGENTS.md"].map((name) => {
     const s = readInstructions(path.join(DECK_DIR, name));
-    return s ? `\n\n## The deck's ${name}\n${s.replace(/node \.\.\/cli\.mjs\b/g, () => CLI_CMD)}\n` : "";
+    return s ? `\n\n## The deck's ${name}\n${useCliCommand(s, CLI_CMD)}\n` : "";
   }).join("");
 }
 // a function: ORIGIN is known only once the port is bound
@@ -668,9 +668,11 @@ function makeSession(choice) {
      explicit), PinDeck's own commands, never the locked paths. Deny rules win over allow rules. */
   const agent = choice.provider === "codex" ? new CodexSession({ ...options, settings: choice,
     instructions: codexInstructions(), tools: agentTools }) : new ClaudeSession({ ...options,
+    // a tool the rules do not allow comes to PinDeck (--permission-prompt-tool stdio), always refused: with the right command if it was the CLI
+    denyMessage: (r) => r?.tool_name === "Bash" ? cliRefusal(r.input?.command, CLI_CMD) : null,
     args: () => ["--append-system-prompt", systemPrompt + slidesInstructions() + deckInstructions(),
       "--setting-sources", "", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands",   // no settings files, no MCP servers or connectors
-      "--permission-mode", "default", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
+      "--permission-mode", "default", "--permission-prompt-tool", "stdio", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
       "--allowedTools", ...readRules(), "Edit(./**)", "Write(./**)",
       ...["layout", "shot", "slides", "pdf", "pdf-figure"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
       "--disallowedTools", ...lockedPaths().flatMap((f) => [`Edit(./${f})`, `Write(./${f})`]),

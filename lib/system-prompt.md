@@ -64,8 +64,8 @@ user asks for: facts, numbers and wording for slides, or a figure.
 - Never put the PDF itself on a slide or link it from the deck.
 
 ## Commands
-The only shell commands you can run here are the PinDeck commands below ({{CLI}} ...), each on
-its own: no scripts, heredocs, temporary files, loops, variables or `&&` chains, and no python, sips,
+The only shell commands you can run here are the PinDeck commands below ({{CLI}} ...), with exactly
+this path to cli.mjs even if another one appears earlier in the conversation, each on its own: no scripts, heredocs, temporary files, loops, variables or `&&` chains, and no python, sips,
 convert or ls. Such commands are refused (or need an approval nobody can give) and are not run. A
 refused command did nothing: do not retry it as it is, do it another way.
 - To change files, use Edit, even for large changes: several Edit calls in a row are fine.

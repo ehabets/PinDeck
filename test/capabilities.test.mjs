@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { detectCapabilities, capabilityPrompt, parsePort, cliCommand, findExecutable, isSupportedPlatform } from "../lib/capabilities.mjs";
+import { detectCapabilities, capabilityPrompt, parsePort, cliCommand, useCliCommand, cliRefusal, findExecutable, isSupportedPlatform } from "../lib/capabilities.mjs";
 
 function bin(t, name) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pindeck caps "));
@@ -102,6 +102,23 @@ test("the CLI command survives the shell for paths with spaces, quotes and $", (
   }
   assert.equal(cliCommand("../PinDeck/cli.mjs"), "node ../PinDeck/cli.mjs");
   assert.equal(cliCommand("../My Tools/cli.mjs"), 'node "../My Tools/cli.mjs"');   // as before 2.9
+});
+
+test("a deck's CLI path becomes this server's command", () => {
+  const cmd = "node ../../x/v3/cli.mjs";
+  assert.equal(useCliCommand("`node ../cli.mjs layout 3` and `node ../pindeck/cli.mjs shot 2`", cmd),
+    `\`${cmd} layout 3\` and \`${cmd} shot 2\``);
+  assert.equal(useCliCommand("node ./tools/cli.mjs build", cmd), "node ./tools/cli.mjs build");   // the deck's own
+  assert.equal(useCliCommand("node build.mjs and npx cli.mjs", cmd), "node build.mjs and npx cli.mjs");
+});
+
+test("a refused CLI call under an old path names the command to run", () => {
+  const cmd = "node ../../x/v3/cli.mjs";
+  assert.equal(cliRefusal("node ../pindeck/cli.mjs layout masks --issues", cmd),
+    `Refused: PinDeck's command is \`${cmd}\` now. Run \`${cmd} layout masks --issues\` instead.`);
+  assert.equal(cliRefusal(`${cmd} layout 1 && ls`, cmd), null);   // the right path: refused for another reason
+  assert.equal(cliRefusal("ls -la", cmd), null);
+  assert.equal(cliRefusal(undefined, cmd), null);
 });
 
 test("findExecutable does not accept folders", (t) => {
