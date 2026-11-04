@@ -71,8 +71,9 @@
         title="Drag to resize the notes (double-click: default size)" aria-label="Resize the speaker notes"></div>
       <button id="notes-toggle" class="notes-head" aria-expanded="true" aria-controls="notes" title="Show or hide the speaker notes">
         <span class="caret" aria-hidden="true">▾</span> Notes <span id="notes-status" class="notes-status"></span></button>
-      <textarea id="notes" spellcheck="true" aria-label="Speaker notes of this slide"
-        placeholder="Speaker notes for this slide, shown in the speaker view (S) when presenting. Saved when you click elsewhere or press ⌘Enter; Esc undoes your typing."></textarea>
+      <div id="notes" class="notes-box" contenteditable="false" role="textbox" aria-multiline="true" spellcheck="true"
+        aria-label="Speaker notes of this slide"
+        data-placeholder="Speaker notes for this slide, shown in the speaker view (S) when presenting. ⌘B bold, ⌘I italic, ⌘U underline. Saved when you click elsewhere or press ⌘Enter; Esc undoes your typing."></div>
     </section>
   </main>
 

@@ -23,7 +23,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd } from "./lib/eids.mjs";
+import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd, decode } from "./lib/eids.mjs";
 import { unifiedDiff } from "./lib/diff.mjs";
 import { ClaudeSession } from "./lib/claude.mjs";
 import { CodexSession } from "./lib/codex.mjs";
@@ -1875,8 +1875,9 @@ const server = http.createServer(async (req, res) => {
       if (!r.changed) return json(res, 200, { unchanged: true });
       const n = findSlides(parse(before[DECK_FILE])).findIndex((s) => s.attrs["data-eid"]?.value === b.eid) + 1;
       const text = String(b.text || "").trim();
+      const said = b.html ? decode(text.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")).trim() : text;   // Claude reads the words, not the tags
       const turnId = recordHandEdit(before, r.html, text ? `Edited the notes of slide ${n}` : `Removed the notes of slide ${n}`,
-        text ? `The user edited the speaker notes of slide ${n} (${b.eid}) by hand. They now read: "${text.slice(0, 300)}".`
+        text ? `The user edited the speaker notes of slide ${n} (${b.eid}) by hand. They now read: "${said.slice(0, 300)}".`
              : `The user removed the speaker notes of slide ${n} (${b.eid}).`);   // manual: the slide itself does not change
       return json(res, 200, { turnId });
     }

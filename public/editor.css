@@ -183,12 +183,15 @@ body.resizing-notes .stage iframe { pointer-events: none; }   /* keep the drag w
 .notes-head:hover { background: var(--bg); border: 0; }
 .notes-head .caret { display: inline-block; transition: transform .15s; }
 .notes-panel.collapsed .caret { transform: rotate(-90deg); }
-.notes-panel.collapsed textarea { display: none; }
+.notes-panel.collapsed .notes-box { display: none; }
 .notes-status { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; }
-.notes-panel textarea { height: 96px; resize: none; border: 0; border-top: 1px solid var(--line);
+.notes-box { height: 96px; overflow-y: auto; box-sizing: border-box; border: 0; border-top: 1px solid var(--line);
   padding: 8px 14px; font: inherit; font-size: 13.5px; line-height: 1.45; color: var(--ink); background: var(--panel); outline: none; }
-.notes-panel textarea:focus { background: #fffcf6; }
-.notes-panel textarea[readonly] { color: var(--muted); }
+.notes-box:focus { background: #fffcf6; }
+.notes-box:empty::before { content: attr(data-placeholder); color: var(--muted); }
+.notes-box[contenteditable="false"] { color: var(--muted); }
+.notes-box[contenteditable="plaintext-only"] { white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.notes-box p, .notes-box ul, .notes-box ol { margin: 0 0 .5em; }
 
 /* ---- Chat ---- */
 .chat-pane { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }

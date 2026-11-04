@@ -50,13 +50,17 @@ test('Stop cancels message preparation before a backend turn starts', () => {
 
 function notesHarness() {
   const listeners = {}, elements = {
-    notes: { value: '', addEventListener: (event, fn) => { listeners[event] = fn; } },
+    notes: {
+      innerHTML: '', contentEditable: 'false', addEventListener: (event, fn) => { listeners[event] = fn; },
+      get textContent() { return this.innerHTML.replace(/<[^>]*>/g, ''); }, set textContent(v) { this.innerHTML = v; },
+      cloneNode() { return { innerHTML: this.innerHTML, querySelectorAll: () => [] }; },
+    },
     'notes-status': {},
   };
   const stored = { one: 'Original notes', two: 'Second slide notes' }, saves = [];
   let fail = null, failLoad = false;
   const context = vm.createContext({
-    $: (id) => elements[id], document: { activeElement: null },
+    $: (id) => elements[id], document: { activeElement: null }, esc: (t) => t,
     state: { slides: [{ eid: 'one' }, { eid: 'two' }], current: 0 },
     editChain: Promise.resolve(), flushNudge() {}, toast() {}, setTimeout() {}, URLSearchParams,
     async api(p, body) {
@@ -90,19 +94,19 @@ for (const failure of ['rejected', 'network']) {
   test(`Notes survive a ${failure} save and retry against their original slide`, async () => {
     const h = notesHarness();
     await h.load();
-    h.box.value = 'My unsaved draft';
+    h.box.innerHTML = 'My unsaved draft';
     h.fail(failure);
     h.navigate();
     await h.blur();
     await h.load(); // navigation and background reloads must also preserve a failed draft
-    assert.equal(h.box.value, 'My unsaved draft');
+    assert.equal(h.box.innerHTML, 'My unsaved draft');
     assert.equal(h.stored.one, 'Original notes');
     h.fail(null);
     await h.blur();
     await h.load();
     assert.equal(h.stored.one, 'My unsaved draft');
     assert.equal(h.stored.two, 'Second slide notes');
-    assert.equal(h.box.value, 'Second slide notes');
+    assert.equal(h.box.innerHTML, 'Second slide notes');
     assert.equal(h.saves.at(-1).eid, 'one');
   });
 }
@@ -110,12 +114,12 @@ for (const failure of ['rejected', 'network']) {
 test('Successful note saves allow navigation to the next slide', async () => {
   const h = notesHarness();
   await h.load();
-  h.box.value = 'Updated notes';
+  h.box.innerHTML = 'Updated notes';
   h.navigate();
   await h.blur();
   await h.load();
   assert.equal(h.stored.one, 'Updated notes');
-  assert.equal(h.box.value, 'Second slide notes');
+  assert.equal(h.box.innerHTML, 'Second slide notes');
 });
 
 test('A failed notes load does not leave the previous slide\'s notes attached', async () => {
@@ -124,22 +128,22 @@ test('A failed notes load does not leave the previous slide\'s notes attached', 
   h.navigate();
   h.failLoad(true);
   await h.load();
-  assert.equal(h.box.value, '');
-  assert.equal(h.box.disabled, true);
-  h.box.value = 'Typed into the wrong slide';
+  assert.equal(h.box.innerHTML, '');
+  assert.equal(h.box.contentEditable, 'false');
+  h.box.innerHTML = 'Typed into the wrong slide';
   await h.blur();
   assert.equal(h.stored.one, 'Original notes');
   assert.equal(h.saves.length, 0);
   h.failLoad(false);
   await h.load();
-  assert.equal(h.box.disabled, false);
-  assert.equal(h.box.value, 'Second slide notes');
+  assert.equal(h.box.contentEditable, 'true');
+  assert.equal(h.box.innerHTML, 'Second slide notes');
 });
 
 test('A notes save still runs after an earlier edit in the queue failed', async () => {
   const h = notesHarness();
   await h.load();
-  h.box.value = 'Saved despite the failed drag';
+  h.box.innerHTML = 'Saved despite the failed drag';
   h.breakQueue();
   await h.blur();
   assert.equal(h.stored.one, 'Saved despite the failed drag');
@@ -255,4 +259,27 @@ test('macOS terminal: Enter opens a new login link in the browser; elsewhere not
     assert.equal(openOnEnter(() => 'l', { platform: 'linux', input: terminal, open: () => assert.fail() }), false);
     assert.equal(openOnEnter(() => 'l', { platform: 'darwin', input: new EventEmitter(), open: () => assert.fail() }), false, 'not a terminal');
   } finally { console.log = log; }
+});
+
+// The notes field puts a deck's notes into the editor page, which holds the API token: richNotes must
+// let through only harmless markup. Run in a real Chrome, the browser the editor's DOMParser is.
+const CHROME = (await import('../lib/capabilities.mjs')).detectCapabilities().chromePath;
+test('The notes field shows only harmless markup from the deck', { skip: !CHROME && 'no Chrome found' }, async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os'), path = await import('node:path');
+  const fn = editor.match(/const NOTE_TAGS[\s\S]*?\nfunction richNotes[\s\S]*?\n}\n/)[0];
+  const rejected = ['<img src=x onerror="alert(1)">', '<a href="javascript:alert(1)">x</a>', '<a href=" JavaScript:x">x</a>',
+    '<svg><script>alert(1)</script></svg>', '<b style="position:fixed">x</b>', '<b onclick="x()">x</b>',
+    '<iframe src="x"></iframe>', '<form><input></form>', '<style>*{}</style>', '<script>x()</script>Hello', '<meta charset="x">Hi'];
+  const kept = ['<b>bold</b> and <i>it</i><br>next', '<a href="https://example.org">link</a>', '<ul class="x"><li>one</li></ul>'];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pindeck notes '));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const page = path.join(dir, 'page.html');
+  fs.writeFileSync(page, `<!doctype html><pre id="out"></pre><script>${fn}
+    document.getElementById("out").textContent = JSON.stringify(${JSON.stringify([...rejected, ...kept]).replace(/</g, '\\u003c')}.map(richNotes));</script>`);
+  const dom = execFileSync(CHROME, ['--headless=new', '--disable-gpu', `--user-data-dir=${path.join(dir, 'profile')}`,
+    '--dump-dom', `file://${page}`], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
+  const out = JSON.parse(dom.match(/<pre id="out">([\s\S]*?)<\/pre>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+  rejected.forEach((html, i) => assert.equal(out[i], null, html));
+  kept.forEach((html, i) => assert.equal(out[rejected.length + i], html));
 });

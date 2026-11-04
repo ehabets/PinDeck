@@ -365,16 +365,44 @@ async function moveSlideTo(from, to) {   // to: insertion index in the current l
 }
 
 /* ---- Speaker notes: the field under the slide -------------------------------------------------------
-   Shows the current slide's <aside class="notes"> and saves it as a hand edit when the field loses focus
-   or on ⌘Enter; Esc puts back what the file says. Notes with markup other than line breaks are edited
-   as their HTML ("HTML" in the header). Typing is never overwritten by a reload. */
+   Shows the current slide's <aside class="notes"> as formatted text (⌘B ⌘I ⌘U; Enter is a line break) and
+   saves its HTML as a hand edit when the field loses focus or on ⌘Enter; Esc puts back what the file says.
+   Notes with markup the field cannot show safely (other tags or attributes) are edited as their HTML
+   ("HTML" in the header). Typing is never overwritten by a reload. */
+const NOTE_TAGS = new Set(["P", "BR", "B", "STRONG", "I", "EM", "U", "S", "SUB", "SUP", "CODE", "SPAN", "SMALL", "MARK",
+  "UL", "OL", "LI", "A", "BLOCKQUOTE", "DIV"]);
+const safeNoteAttr = (el, a) => a.name === "class" || (a.name === "href" && el.tagName === "A" && /^(https?:|mailto:|#)/i.test(a.value.trim()));
+/* The notes' HTML when the field can show it unchanged (only harmless tags and attributes), else null. Parsed inert. */
+function richNotes(html) {
+  const body = new DOMParser().parseFromString("<body>" + html, "text/html").body;   // <body>: a leading <style> or <script> stays in it, to be seen
+  for (const el of body.querySelectorAll("*"))
+    if (!NOTE_TAGS.has(el.tagName) || [...el.attributes].some((a) => !safeNoteAttr(el, a))) return null;
+  return body.innerHTML;
+}
 const notesBox = $("notes");
-let notes = { eid: null, text: "", html: false };   // the notes as the file has them
+let notes = { eid: null, text: "", html: false };   // the field's content as loaded; html: edited as raw HTML
 let notesSeq = 0;
-const notesDirty = () => !!notes.eid && notesBox.value.trim() !== notes.text.trim();
+const notesValue = () => notes.html ? notesBox.textContent : notesBox.innerHTML;
+const notesDirty = () => !!notes.eid && notesValue().trim() !== notes.text.trim();
+/* What is saved: the raw HTML as typed, or the field's HTML without the browser's own styling of edits */
+function notesHtml() {
+  if (notes.html) return notesBox.textContent;
+  if (!notesBox.textContent.trim()) return "";
+  const c = notesBox.cloneNode(true);
+  c.querySelectorAll("[style]").forEach((el) => el.removeAttribute("style"));
+  return c.innerHTML.replace(/(\s*<br>)+\s*$/, "");
+}
+/* Shows the notes `d` ({ text, html } from the server, or null: none) of slide `eid` */
+function showNotes(eid, d) {
+  const rich = !d ? "" : d.html ? richNotes(d.text || "") : (d.text || "").split("\n").map(esc).join("<br>");
+  notes = { eid, text: "", html: rich == null };
+  notesBox.contentEditable = !d ? "false" : notes.html ? "plaintext-only" : "true";
+  if (notes.html) notesBox.textContent = d.text; else notesBox.innerHTML = rich;
+  notes.text = notesValue();
+}
 function notesStatus(msg) {
   $("notes-status").textContent = msg ?? (notes.html ? "HTML" : "");
-  $("notes-status").title = msg ? "" : notes.html ? "These notes contain formatting, so you edit them as HTML" : "";
+  $("notes-status").title = msg ? "" : notes.html ? "These notes contain markup the field cannot show, so you edit them as HTML" : "";
 }
 async function loadNotes() {
   const eid = state.slides[state.current]?.eid;
@@ -386,19 +414,15 @@ async function loadNotes() {
   const d = res?.ok ? await res.json().catch(() => null) : null;
   if (seq !== notesSeq || document.activeElement === notesBox || notesDirty()) return;
   if (!d) {   // detach from the previous slide, so its notes are not shown, or saved over, as this one's
-    notes = { eid: null, text: "", html: false };
-    notesBox.value = "";
-    notesBox.disabled = true;
+    showNotes(null, null);
     return notesStatus("Could not load");
   }
-  notes = { eid, text: d.text || "", html: !!d.html };
-  notesBox.value = notes.text;
-  notesBox.disabled = false;
+  showNotes(eid, d);
   notesStatus();
 }
 function saveNotes() {
   if (!notesDirty()) return Promise.resolve(true);
-  const edit = { eid: notes.eid, text: notesBox.value, html: notes.html };
+  const edit = { eid: notes.eid, text: notesHtml(), html: true }, shown = notesValue();
   flushNudge();
   const run = async () => {
     notesStatus("Saving…");
@@ -412,7 +436,7 @@ function saveNotes() {
       toast(d?.error || "Could not save the notes.");
       return false;
     }
-    if (notes.eid === edit.eid) notes.text = edit.text;
+    if (notes.eid === edit.eid) notes.text = shown;
     notesStatus("Saved");
     setTimeout(() => { if ($("notes-status").textContent === "Saved") notesStatus(); }, 1500);
     return true;
@@ -424,12 +448,23 @@ notesBox.addEventListener("blur", async () => {
 });
 notesBox.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); notesBox.blur(); }
-  else if (e.key === "Escape") { e.preventDefault(); notesBox.value = notes.text; notesBox.blur(); }
+  else if (e.key === "Escape") {
+    e.preventDefault();
+    if (notes.html) notesBox.textContent = notes.text; else notesBox.innerHTML = notes.text;
+    notesBox.blur();
+  }
+  // a <br>, as the notes have them, not a new <div>
+  else if (e.key === "Enter" && !notes.html) { e.preventDefault(); document.execCommand("insertLineBreak"); }
 });
+notesBox.addEventListener("paste", (e) => {   // pasted text comes in plain: no styles or markup from elsewhere
+  e.preventDefault();
+  document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+});
+notesBox.addEventListener("input", () => { if (notesBox.innerHTML === "<br>") notesBox.innerHTML = ""; });   // placeholder again
 // closing the tab while typing: send what is there (sendBeacon cannot set headers, hence the token in the URL)
 addEventListener("pagehide", () => {
   if (notesDirty() && !state.busy)
-    navigator.sendBeacon(BASE + "api/notes", new Blob([JSON.stringify({ eid: notes.eid, text: notesBox.value, html: notes.html })]));
+    navigator.sendBeacon(BASE + "api/notes", new Blob([JSON.stringify({ eid: notes.eid, text: notesHtml(), html: true })]));
 });
 function setNotesOpen(open) {
   $("notes-panel").classList.toggle("collapsed", !open);
@@ -857,7 +892,7 @@ function handleKey(k, mod = {}) {
   else if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " ") goto(state.current + 1);
 }
 document.addEventListener("keydown", (e) => {
-  if (e.target.closest?.("input, textarea, dialog")) return;
+  if (e.target.closest?.("input, textarea, dialog, [contenteditable]")) return;
   // a menu and the button that opens it keep Enter, Space and the arrow keys (a menu opens, an item is chosen):
   // no slide change, no jump to the chat. Other buttons do not: after a click on ‹ › the focus stays there
   // while the slide is clicked (the slide frame keeps it), and Enter must still edit the selected text.
