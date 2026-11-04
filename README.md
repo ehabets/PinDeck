@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 3** (`3.3.0`). On Linux, PinDeck runs as a headless server that you use
+> **macOS and Linux · Version 3** (`3.4.0`). On Linux, PinDeck runs as a headless server that you use
 > from your Mac's browser through an SSH tunnel (see [Running on a Linux server](#running-on-a-linux-server)).
 > Windows is not supported. Coming from PinDeck 2: version 3 keeps its settings and chats in
 > `~/.pindeck-v3`, apart from 2.x (see [Models, providers and configuration](#models-providers-and-configuration)).
@@ -561,6 +561,14 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 
 ## Versions
+
+* **3.4.0**: formatted speaker notes, and the speaker view works.
+  - The Notes field shows the notes' formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts
+    a new line, and pasted text comes in plain. Notes with markup the field cannot show safely are still
+    edited as HTML, and nothing in them is lost on save.
+  - Present opens the deck on localhost, so reveal.js's speaker view (`S`) shows the notes and the next slide.
+  - Claude runs PinDeck's commands by this server's path when the deck's `CLAUDE.md` names another
+    (such as `node ../pindeck/cli.mjs`), and a chat that used an old path is told the right one.
 
 * **3.3.0**: fixes from a code audit.
   - After a PowerPoint import, refining the slides no longer deletes pictures that the deck still uses

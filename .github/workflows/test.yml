@@ -87,4 +87,4 @@ jobs:
       - name: Real Chrome tests (screenshots, headless layout, PDF export)
         run: |
           set -o pipefail
-          node --test --test-reporter=tap --test-timeout=300000 --test-name-pattern="Real Chrome" test/server.test.mjs 2>&1 | tee tap-chrome.txt || { node .github/tap-annotations.mjs tap-chrome.txt; exit 1; }
+          node --test --test-reporter=tap --test-timeout=300000 --test-name-pattern="Real Chrome" test/server.test.mjs test/review-regressions.test.mjs 2>&1 | tee tap-chrome.txt || { node .github/tap-annotations.mjs tap-chrome.txt; exit 1; }

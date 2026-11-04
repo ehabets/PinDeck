@@ -262,11 +262,12 @@ test('macOS terminal: Enter opens a new login link in the browser; elsewhere not
 });
 
 // The notes field puts a deck's notes into the editor page, which holds the API token: richNotes must
-// let through only harmless markup. Run in a real Chrome, the browser the editor's DOMParser is.
-const CHROME = (await import('../lib/capabilities.mjs')).detectCapabilities().chromePath;
-test('The notes field shows only harmless markup from the deck', { skip: !CHROME && 'no Chrome found' }, async (t) => {
+// let through only harmless markup. Run in a real Chrome (PINDECK_TEST_CHROME, as in server.test.mjs).
+const CHROME = process.env.PINDECK_TEST_CHROME;
+test('Real Chrome: the notes field shows only harmless markup from the deck',
+  { skip: !CHROME && 'set PINDECK_TEST_CHROME to a Chrome or Chromium executable' }, async (t) => {
   const { execFileSync } = await import('node:child_process');
-  const os = await import('node:os'), path = await import('node:path');
+  const os = await import('node:os'), path = await import('node:path'), { ROOT_ARGS } = await import('../lib/pdf.mjs');
   const fn = editor.match(/const NOTE_TAGS[\s\S]*?\nfunction richNotes[\s\S]*?\n}\n/)[0];
   const rejected = ['<img src=x onerror="alert(1)">', '<a href="javascript:alert(1)">x</a>', '<a href=" JavaScript:x">x</a>',
     '<svg><script>alert(1)</script></svg>', '<b style="position:fixed">x</b>', '<b onclick="x()">x</b>',
@@ -277,7 +278,7 @@ test('The notes field shows only harmless markup from the deck', { skip: !CHROME
   const page = path.join(dir, 'page.html');
   fs.writeFileSync(page, `<!doctype html><pre id="out"></pre><script>${fn}
     document.getElementById("out").textContent = JSON.stringify(${JSON.stringify([...rejected, ...kept]).replace(/</g, '\\u003c')}.map(richNotes));</script>`);
-  const dom = execFileSync(CHROME, ['--headless=new', '--disable-gpu', `--user-data-dir=${path.join(dir, 'profile')}`,
+  const dom = execFileSync(CHROME, ['--headless=new', '--disable-gpu', ...ROOT_ARGS, `--user-data-dir=${path.join(dir, 'profile')}`,
     '--dump-dom', `file://${page}`], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
   const out = JSON.parse(dom.match(/<pre id="out">([\s\S]*?)<\/pre>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
   rejected.forEach((html, i) => assert.equal(out[i], null, html));
