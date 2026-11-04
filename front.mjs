@@ -150,7 +150,8 @@ setInterval(async () => {
    streamed back (event streams, media ranges and large uploads included) */
 function proxy(req, res, d, rest, anonymous = false) {
   d.last = Date.now();
-  const headers = { ...req.headers, host: new URL(d.url).host, ...(anonymous ? {} : { "x-editor-token": d.token }) };
+  // the deck's pages keep the browser's host: on localhost (Present) the deck server leaves out the sandbox
+  const headers = { ...req.headers, host: anonymous ? req.headers.host : new URL(d.url).host, ...(anonymous ? {} : { "x-editor-token": d.token }) };
   if (anonymous) delete headers["x-editor-token"];
   delete headers.cookie;
   delete headers.origin;   // checked here against the front's address; the deck server checks its own
@@ -287,7 +288,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, ORIGIN);
     const p = url.pathname;
-    if (req.method === "GET" && p === "/login") return login(res, url);
+    if (req.method === "GET" && p === "/login") return login(res, url, host);
     // the editor's own scripts and styles hold nothing secret; the deck page loads bridge.js from here
     if (req.method === "GET" && p.startsWith("/editor/")) return serveEditorFile(res, p.slice(8));
     /* A deck's pages and files under /d/<deck>/v/<token>/: asked for by the deck itself, which runs sandboxed

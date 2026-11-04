@@ -171,6 +171,20 @@ function raw(port, { method = "GET", p = "/", headers = {} } = {}) {
   });
 }
 
+/* A GET with a Host header fetch() will not send as given: { status, headers, body } */
+function asHost(port, host, p, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: p, headers: { ...headers, host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (d) => { body += d; });
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 /* ---- Supported platforms ---------------------------------------------------------------------- */
 for (const platform of ["linux", "darwin"]) {
   const mocked = platform !== REAL ? ` (process.platform mocked on ${REAL}: code path only)` : "";
@@ -1286,6 +1300,30 @@ test("No token in any page; the editor, deck and API need a login cookie or the 
   assert.equal((await fetch(`${s.url}/editor/editor.css`)).status, 200, "the editor's own files hold nothing secret");
   const editor = await (await fetch(s.url + "/", { headers: { "x-editor-token": s.token } })).text();
   assert.ok(!editor.includes(s.token) && !editor.includes("%%TOKEN%%"));
+});
+
+test("Present on localhost: the deck page without the sandbox, and no login or cookie works there", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const { view } = (await s.api("status")).data;
+  assert.match(view, /^v\/[0-9a-f]{32}\/$/);
+  const local = `localhost:${s.port}`, page = `/${view}deck/index.html`;
+  assert.match((await asHost(s.port, `127.0.0.1:${s.port}`, page)).headers["content-security-policy"], /^sandbox /);
+  const shown = await asHost(s.port, local, page);
+  assert.equal(shown.status, 200);
+  assert.equal(shown.headers["content-security-policy"], undefined, "no sandbox: reveal.js's speaker view needs a real origin");
+  assert.equal((await asHost(s.port, local, `/${view}deck/theme.css`)).status, 200, "the deck's own files");
+  // a cookie for localhost (an older login there) counts for nothing; the header (front, CLI) still does
+  const jar = { cookie: `pindeck-${s.port}=${s.token}` };
+  for (const p of ["/", "/api/status", "/deck/index.html"]) assert.equal((await asHost(s.port, local, p, jar)).status, 403, p);
+  assert.equal((await asHost(s.port, local, "/api/status", { "x-editor-token": s.token })).status, 200);
+  // a login link on localhost goes to 127.0.0.1, where its code still works
+  const code = new URL(s.login).search;
+  const r = await asHost(s.port, local, `/login${code}`);
+  assert.equal(r.status, 302);
+  assert.equal(r.headers["set-cookie"], undefined);
+  assert.equal(r.headers.location, `http://127.0.0.1:${s.port}/login${code}`);
+  assert.equal((await fetch(r.headers.location)).status, 200);
 });
 
 test("Login link: works once, sets an HttpOnly SameSite=Strict cookie named after the port", async (t) => {

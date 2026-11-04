@@ -140,6 +140,12 @@ test("Front: one login for several decks, each with its own server, opened when 
   const page = await fetch(view, { headers: {} });
   assert.match(page.headers.get("content-security-policy"), /^sandbox allow-scripts /);
   assert.match(await page.text(), /<script src="\/editor\/bridge\.js">/);
+  // on localhost (Present) the same page without the sandbox; the login cookie counts for nothing there
+  const local = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port: s.port, path: view.pathname,
+    headers: { host: `localhost:${s.port}` } }, (res) => { res.resume(); resolve(res); }).on("error", reject));
+  assert.equal(local.statusCode, 200);
+  assert.equal(local.headers["content-security-policy"], undefined);
+  assert.equal(await raw(s.port, { p: `/d/${key(second)}/api/status`, headers: { ...s.jar, host: `localhost:${s.port}` } }), 403);
   const viewBase = view.pathname.replace(/deck\/second\.html$/, "");
   assert.equal((await fetch(`${s.url}${viewBase}deck/theme.css`)).status, 200, "the deck's own files");
   for (const p of ["api/status", "api/events", "deck/../api/status", "shots/x.png"])
@@ -181,9 +187,10 @@ test("Front: one login for several decks, each with its own server, opened when 
   for (const host of ["evil.example", `evil.example:${s.port}`, "localhost.:8080"])
     assert.equal(await raw(s.port, { p: "/api/decks", headers: { ...s.jar, host } }), 403, host);
   // a tunnel on another local port: its Host and Origin, passed on to the deck as the deck's own
-  const tunnel = { ...s.jar, host: "localhost:8080", "content-type": "application/json" };
+  const tunnel = { ...s.jar, host: "127.0.0.1:8080", "content-type": "application/json" };
   assert.equal(await raw(s.port, { p: `/d/${key(second)}/api/status`, headers: tunnel }), 200);
-  assert.notEqual(await raw(s.port, { method: "POST", p: `/d/${key(second)}/api/notes`, headers: { ...tunnel, origin: "http://localhost:8080" } }), 403);
+  assert.notEqual(await raw(s.port, { method: "POST", p: `/d/${key(second)}/api/notes`, headers: { ...tunnel, origin: "http://127.0.0.1:8080" } }), 403);
+  assert.equal(await raw(s.port, { p: `/d/${key(second)}/api/status`, headers: { ...tunnel, host: "localhost:8080" } }), 403, "localhost is for presenting only");
   assert.equal(await raw(s.port, { method: "POST", p: `/d/${key(second)}/api/notes`, headers: { ...tunnel, origin: s.url } }), 403);
 
   // pindeck login: a link to the front; with a deck, one that opens it

@@ -42,7 +42,7 @@ import { deckTarget, homeDir, homeWarning } from "./lib/deck-target.mjs";
 import { listDecks, linkProblem } from "./lib/deck-list.mjs";
 import { assetRoots } from "./lib/asset-roots.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
-import { goodHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
+import { goodHost, presentHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
 
 /* ---- Config ------------------------------------------------------------------ */
@@ -543,7 +543,7 @@ let session = null, starting = null;
 const status = () => ({ busy: state.busy, switching: state.switching, preparing: !!state.preparing, model: state.model, sessionId: state.sessionId, settings: { ...settings },
   running: !!session?.running, provider: settings.provider, models: catalog, deck: DECK_DIR, deckFile: DECK_FILE,
   chrome: CAPS.screenshot.available, slideSelector: deckNow.selector, deckProblem: deckNow.problem,
-  capabilities: publicCapabilities(CAPS), rev: deckRev(),
+  capabilities: publicCapabilities(CAPS), rev: deckRev(), view: VIEW.slice(1) + "/",
   undo: changeLabel(liveTurns().at(-1)), undoId: liveTurns().at(-1)?.id ?? null, redo: changeLabel(state.redo.at(-1)) });
 /* Pushed to the editors on every change. The model lists (both providers' catalogs) go along only when they
    changed since the last push: the editor keeps the last ones it got. */
@@ -1467,9 +1467,10 @@ let ready = false;
 const NEEDS_DECK = /^\/api\/(message|slides|layout|shot|pdf|pdf-figure|edit|text|split|remove|notes|delete|delete-info|source|slide-hidden|move-slide|add-slide|import-apply|export)$/;
 const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;   // answered as text, for cli.mjs
 /* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
-   read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret. */
+   read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret.
+   On localhost (Present) there is no sandbox: no login works there (see presentHost). */
 const SCRIPTABLE = /\.(html|svg|xml)$/i;
-const deckHeaders = (f, viewing) => ({ ...(SCRIPTABLE.test(f) ? { "content-security-policy": SANDBOX } : {}),
+const deckHeaders = (f, viewing, open) => ({ ...(SCRIPTABLE.test(f) && !open ? { "content-security-policy": SANDBOX } : {}),
   ...(viewing ? { "access-control-allow-origin": "*" } : {}) });
 const server = http.createServer(async (req, res) => {
   if (!ready) return text(res, 503, "PinDeck is starting. Reload in a moment.");
@@ -1478,7 +1479,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, ORIGIN);
     let p = url.pathname;
-    if (req.method === "GET" && p === "/login") return login(res, url);
+    if (req.method === "GET" && p === "/login") return login(res, url, host);
     // /v/<token>/deck/... and /v/<token>/files/...: the deck's pages and files, read-only, nothing else
     let viewing = false;
     if (p.startsWith("/v/")) {
@@ -1526,7 +1527,7 @@ const server = http.createServer(async (req, res) => {
       const f = deckPath;
       if (!viewing && /\.html$/i.test(f)) return toView(p);
       const mode = url.searchParams.get("editor");
-      if (!mode || !/\.html$/i.test(f)) return serveFile(res, f, null, req, deckHeaders(f, viewing));
+      if (!mode || !/\.html$/i.test(f)) return serveFile(res, f, null, req, deckHeaders(f, viewing, presentHost(host)));
       return serveFile(res, f, (s) => {
         // headless runs must not stream media, or Chrome never finishes the page
         if (mode === "shot" || mode === "dump" || mode === "pdf") s = s.replace(/\bpreload="(auto|metadata)"/g, 'preload="none"');
@@ -1537,7 +1538,7 @@ const server = http.createServer(async (req, res) => {
         }
         return s.replace(/<\/body>/i, BRIDGE_TAG);
       }, req, ["shot", "dump", "pdf"].includes(mode) && headlessKeys.delete(url.searchParams.get("headless"))
-        ? deckHeaders(".css", viewing) : deckHeaders(f, viewing));   // headless Chrome's page, once (see chromeStart)
+        ? deckHeaders(".css", viewing) : deckHeaders(f, viewing, presentHost(host)));   // headless Chrome's page, once (see chromeStart)
     }
     if (viewing) return text(res, 404, "Not found");
 

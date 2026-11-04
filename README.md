@@ -328,7 +328,7 @@ ssh -N -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCo
 
 Open the login link PinDeck printed on the server in the Mac's browser. The local port may differ from
 the server's: with `-L 127.0.0.1:8080:127.0.0.1:5180`, change 5180 in the link to 8080. PinDeck accepts any
-port, as long as the address is `127.0.0.1` or `localhost`. If the tunnel drops, a message you have already sent keeps running on the
+port, as long as the address is `127.0.0.1`: `localhost` is where decks are presented, and nobody logs in there. If the tunnel drops, a message you have already sent keeps running on the
 server. Restart the tunnel and the editor reconnects and shows the files as they are then; it never sends a
 message twice. If PinDeck restarts, the editor asks you to log in again: run `node front.mjs login
 path/to/deck` on the server for a new link.
@@ -457,10 +457,13 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   only six connections to one port; if a deck server stops, the front opens the deck again and the tab
   catches up. Each PinDeck process notes its address in `~/.pindeck-v3/servers/` for `pindeck login` and
   `cli.mjs`, and a deck server holds its deck's `open.json`, so a deck opens in one PinDeck only.
-* **Deck pages are sandboxed.** The deck page (in the editor's frames, and in Present) runs with a sandbox
-  policy in an origin of its own, at a per-run address that serves the deck's files and nothing else. A
-  script in a deck, a template, or written by the assistant cannot reach the login cookie, the API, the
-  chat or other decks. The editor and its bridge in the slide frame talk by `postMessage`. Headless Chrome
+* **Deck pages are sandboxed.** The deck page in the editor's frames runs with a sandbox policy in an
+  origin of its own, at a per-run address that serves the deck's files and nothing else. A script in a
+  deck, a template, or written by the assistant cannot reach the login cookie, the API, the chat or other
+  decks. The editor and its bridge in the slide frame talk by `postMessage`. Present opens the same
+  address on `localhost` without the sandbox, so reveal.js's speaker view (`S`) works: browsers treat
+  `localhost` and `127.0.0.1` as different sites, PinDeck takes no login and no cookie there, and the tab is
+  opened without a handle on the editor. Headless Chrome
   (screenshots, layout, PDFs) does not log in at all; the page it asks for is served without the sandbox,
   which its screenshot and print modes cannot handle, only with a key made for that one run.
 * **Element ids.** On start, the server gives every slide and every visible element a readable
@@ -551,8 +554,9 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 * The undo history lives on the server and starts fresh when PinDeck restarts, or when a deck closes after
   30 minutes without an open editor.
 * One writer at a time: PinDeck is not made for editing the same deck from two editors or tools at once.
-* A deck's own scripts run sandboxed in the editor and in Present: they cannot use `localStorage`, cookies
-  or the editor page. A deck that needs them for its slides to work should catch the error.
+* A deck's own scripts run sandboxed in the editor: they cannot use `localStorage`, cookies or the editor
+  page. A deck that needs them for its slides to work should catch the error. In Present they can, on
+  `localhost`, where every deck of one PinDeck shares the same `localStorage`.
 * Linux: pictures of PDF pages and PowerPoint slides, and waveforms of non-WAV audio, need
   Poppler, LibreOffice and ffmpeg on the server (see [Running on a Linux server](#running-on-a-linux-server)).
 

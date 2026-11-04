@@ -580,8 +580,13 @@ $("export-menu").addEventListener("click", async (e) => {
   }
 });
 
+/* Present on localhost, at the deck's view path: no login there, so no sandbox, and reveal.js's speaker view (S)
+   works. noopener: the deck's scripts get no handle on this editor. */
 $("present").onclick = () => {
-  window.open(`${BASE}deck/${state.slides[state.current]?.hash || ""}`, "_blank");
+  const view = state.status?.view || "";
+  const u = new URL(`${BASE}${view}deck/${state.slides[state.current]?.hash || ""}`, location.href);
+  if (view) u.hostname = "localhost";
+  window.open(u, "_blank", "noopener");
 };
 
 /* ---- Pins --------------------------------------------------------------------------------------- */
