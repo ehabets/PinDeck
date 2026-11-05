@@ -445,8 +445,12 @@ pindeck quarto-example/talk.qmd
 * **No hand edits.** Moving, resizing, text editing, notes, new, hidden, moved or deleted slides and the
   PowerPoint import would be overwritten by the next render, so they are off. Pins, comments, the chat,
   Undo of the assistant's changes, screenshots and PDF export work as usual.
-* `quarto-example/` is a short signal-processing deck (sampling, aliasing, a moving-average filter) with
-  interactive Observable JS slides.
+* **The Ocean template in Quarto.** `format: ocean-revealjs` gives a Quarto deck the look of `ocean-example/`
+  (title slide, dividers, kicker over the title, footer with slide number and logo). Copy
+  `quarto-example/_extensions/ocean/` next to your `.qmd`; its `README.md` lists the Markdown for each layout.
+  As in an HTML deck, its `brand.css` and `vendor/` are locked for the assistant and its `theme.css` is not.
+* `quarto-example/` is a short signal-processing deck in Ocean (sampling, aliasing, a moving-average filter)
+  with interactive Observable JS slides.
 
 ## PowerPoint import
 
@@ -615,6 +619,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
     and hand edits of the output are off. An example deck in `quarto-example/`.
   - The assistant marks the comments it has addressed as resolved (`cli.mjs resolve <id> <what it did>`).
   - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
+  - Ocean for Quarto: a format extension (`format: ocean-revealjs`) with Ocean's layouts, brand layer and footer;
+    the example deck uses it.
 * **3.4.0**: formatted speaker notes, and the speaker view works.
   - The Notes field shows the notes' formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts
     a new line, and pasted text comes in plain. Notes with markup the field cannot show safely are still

@@ -16,7 +16,8 @@ import { open, until, sleep } from "./browser.mjs";
 
 const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-quarto-")), "talk");
 fs.mkdirSync(dir);
-for (const f of ["talk.qmd", "custom.scss"]) fs.copyFileSync(new URL(`../quarto-example/${f}`, import.meta.url), path.join(dir, f));
+fs.copyFileSync(new URL("../quarto-example/talk.qmd", import.meta.url), path.join(dir, "talk.qmd"));
+fs.cpSync(new URL("../quarto-example/_extensions", import.meta.url).pathname, path.join(dir, "_extensions"), { recursive: true });
 const b = await open(path.join(dir, "talk.qmd"));
 const shots = [];
 const shot = async (name) => { const f = path.join(b.tmp, name + ".png"); await b.shot(f); shots.push(f); };
@@ -27,32 +28,35 @@ const go = async (i) => {
 };
 
 // 1. rendered, and the editor knows it is a Quarto deck: no hand edits
-assert.equal(await b.js(`return document.querySelectorAll("#slide-list li").length`), 6);
+assert.equal(await b.js(`return document.querySelectorAll("#slide-list li").length`), 9);
 assert.ok(await b.js(`return document.body.classList.contains("quarto") && getComputedStyle(document.getElementById("add-slide-btn")).display === "none"`), "no New slide");
 assert.equal(await b.js(`return document.getElementById("deck-source").textContent + " " + document.getElementById("deck-name").textContent`), "talk.qmd talk.qmd");
-await go(5);
+// the Ocean format: kicker, body and footer written into the slide, the brand layer loaded
+await go(7);
+assert.ok(await b.frameJs(`const s = document.querySelector("section.slide.present"); return !!(s.querySelector(":scope > .kicker") && s.querySelector(":scope > .slide-body") && s.querySelector(":scope > footer.slide-foot .f-num")?.textContent === "08")`), "Ocean slide structure");
+assert.ok(await b.frameJs(`return [...document.styleSheets].some((x) => /_extensions\\/ocean\\/brand\\.css$/.test(x.href || ""))`), "the brand layer");
 await until(() => b.js(`return document.getElementById("notes").textContent.includes("9 Hz")`), "the speaker notes");
 assert.equal(await b.js(`return document.getElementById("notes").contentEditable`), "false", "notes are read-only");
-await b.clickInSlide("section.present h2");
+await b.clickInSlide("section.slide.present h2");
 for (const type of ["keyDown", "keyUp"]) await b.cdp("Input.dispatchKeyEvent", { type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });   // edit the selected title
 await sleep(400);
 assert.equal(await b.frameJs(`return !!document.querySelector("[contenteditable=true], [contenteditable=plaintext-only]")`), false, "no text editing");
 assert.match(await b.js(`return document.getElementById("toast").textContent`), /rendered by Quarto from talk\.qmd/);
 
 // 2. the interactive slide: OJS draws the sampled sinusoid and follows the slider
-await go(3);
-await until(() => b.frameJs(`return document.querySelectorAll("section.present svg circle").length > 3`), "the OJS plot (its libraries load from the web)", 45000);
-const before = await b.frameJs(`return document.querySelector("section.present svg polyline").getAttribute("points").slice(0, 80)`);
-await b.frameJs(`const r = document.querySelector("section.present input[type=range]"); r.value = 9; r.dispatchEvent(new Event("input", { bubbles: true }));`);
-await until(() => b.frameJs(`return document.querySelector("section.present").textContent.includes("looks like 1.0 Hz")`), "the alias text to follow the slider");
-assert.notEqual(await b.frameJs(`return document.querySelector("section.present svg polyline").getAttribute("points").slice(0, 80)`), before);
+await go(4);
+await until(() => b.frameJs(`return document.querySelectorAll("section.slide.present svg circle").length > 3`), "the OJS plot (its libraries load from the web)", 45000);
+const before = await b.frameJs(`return document.querySelector("section.slide.present svg polyline").getAttribute("points").slice(0, 80)`);
+await b.frameJs(`const r = document.querySelector("section.slide.present input[type=range]"); r.value = 9; r.dispatchEvent(new Event("input", { bubbles: true }));`);
+await until(() => b.frameJs(`return document.querySelector("section.slide.present").textContent.includes("looks like 1.0 Hz")`), "the alias text to follow the slider");
+assert.notEqual(await b.frameJs(`return document.querySelector("section.slide.present svg polyline").getAttribute("points").slice(0, 80)`), before);
 await shot("quarto-ojs");
 
 // 3. a comment on the formula of slide 2: its text is the TeX
-await go(1);
+await go(2);
 await b.clickSel("#pin-toggle");
-await until(() => b.frameJs(`return !!document.querySelector('section.present script[type^="math/tex"]')`), "MathJax", 30000);
-const mathEid = await b.frameJs(`const s = document.querySelector('section.present script[type="math/tex; mode=display"]'); return s.closest("[data-eid]").dataset.eid;`);
+await until(() => b.frameJs(`return !!document.querySelector('section.slide.present script[type^="math/tex"]')`), "MathJax", 30000);
+const mathEid = await b.frameJs(`const s = document.querySelector('section.slide.present script[type="math/tex; mode=display"]'); return s.closest("[data-eid]").dataset.eid;`);
 await b.clickInSlide(`[data-eid="${mathEid}"]`, 0.5, 0.5);
 await until(() => b.js(`return document.querySelectorAll("#pin-tray .chip").length === 1`), "the pin");
 await b.type("#input", "Use \\Omega for the normalized frequency.");
@@ -62,13 +66,13 @@ const review = JSON.parse(fs.readFileSync(path.join(dir, ".pindeck", "talk.revie
 assert.equal(review.comments[0].slide.id, "sampling-a-sinusoid");
 const packet = fs.readFileSync(path.join(dir, ".pindeck", "talk.review.md"), "utf8");
 assert.match(packet, /source `talk\.qmd`/);
-assert.match(packet, /`#sampling-a-sinusoid`, source line 13 — ok/);
+assert.match(packet, /`#sampling-a-sinusoid`, source line 15 — ok/);
 
 // 4. the source changes outside PinDeck: rendered, reloaded, the comment flagged
 const qmd = path.join(dir, "talk.qmd");
 fs.writeFileSync(qmd, fs.readFileSync(qmd, "utf8").replace("x[n] = x(nT_s)", "x[n] = x(n T_s)"));
 await until(() => b.js(`return document.querySelector(".cmt.stale")`).then(Boolean).catch(() => false), "the comment to be flagged after the render", 60000);
-await until(() => b.frameJs(`return [...document.querySelectorAll('section.present script[type^="math/tex"]')].some((s) => s.textContent.includes("n T_s"))`), "the slide to show the change", 30000);
+await until(() => b.frameJs(`return [...document.querySelectorAll('section.slide.present script[type^="math/tex"]')].some((s) => s.textContent.includes("n T_s"))`), "the slide to show the change", 30000);
 await b.clickSel("#comments-btn");
 await shot("quarto-comments");
 console.log(`ok: Quarto deck rendered, hand edits off, OJS interactive, comment on math, outside edit re-rendered\n  ${shots.join("\n  ")}`);

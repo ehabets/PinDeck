@@ -77,7 +77,15 @@ const { dir: DECK_DIR, file: DECK_FILE, named: NAMED, name: DECK_NAME, key: deck
 const OUTPUTS = SOURCE ? [DECK_FILE, DECK_FILE.replace(/\.html$/i, "_files"), ".quarto"] : [];
 const isOutput = (rel) => OUTPUTS.some((o) => rel === o || rel.startsWith(o + "/"));
 const EDITABLE = SOURCE ? [SOURCE, DECK_FILE] : [DECK_FILE, "theme.css"];   // both backends may edit these (a Quarto deck: its source)
-const LOCKED = ["brand.css"];                      // never, enforced twice
+/* A Quarto deck's format extensions (_extensions/[<org>/]<name>/, e.g. Ocean) carry their own brand.css and vendor/ */
+function extensionBrands() {
+  try {
+    return fs.readdirSync(path.join(DECK_DIR, "_extensions"), { recursive: true }).map((f) => String(f).split(path.sep).join("/"))
+      .filter((f) => /(^|\/)brand\.css$/.test(f) && !f.includes("vendor/")).map((f) => `_extensions/${f}`);
+  } catch { return []; }
+}
+const BRANDS = SOURCE ? extensionBrands() : [];
+const LOCKED = ["brand.css", ...BRANDS];           // never, enforced twice
 const HOME_DIR = homeDir();
 const STATE_DIR = path.join(HOME_DIR, "decks", deckKey);
 const SHOT_DIR = path.join(STATE_DIR, "shots");
@@ -103,7 +111,7 @@ const CAPS = detectCapabilities();
    sees its last edit. Quarto's own errors go to the chat, and to the assistant. */
 const QUARTO = SOURCE ? findExecutable(process.env.QUARTO_BIN || "quarto") : null;
 const RENDER_TIMEOUT = 180000;
-const SOURCE_FILE = /\.(qmd|md|scss|css|ya?ml|bib|csl|lua|js|png|jpe?g|gif|svg|webp|pdf|mp4|wav|mp3)$/i;   // what a render reads
+const SOURCE_FILE = /\.(qmd|md|scss|css|ya?ml|bib|csl|lua|js|html?|png|jpe?g|gif|svg|webp|pdf|mp4|wav|mp3)$/i;   // what a render reads
 /* Quarto's message, without colours and its JavaScript stack: what says what is wrong in the source */
 const quartoError = (stderr) => `Quarto could not render ${SOURCE}:\n` + String(stderr).replace(/\x1b\[[0-9;]*m/g, "")
   .split(/\nStack trace:|\n\s+at /)[0].trim().split("\n").slice(-25).join("\n");
@@ -601,12 +609,15 @@ const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md
 const quartoInstructions = () => SOURCE ? `\n\n## This deck is made with Quarto
 ${DECK_FILE} is rendered by Quarto from ${SOURCE}: it is build output, locked, and overwritten by every render. Make every ` +
   `change in ${SOURCE} (Quarto Markdown: \`##\` headings start slides and become the slides' id attributes, \`::: {.notes}\` holds ` +
-  `speaker notes, \`::: {.incremental}\` and \`. . .\` make build steps, \`{ojs}\` cells are Observable JS), or in the files it uses ` +
+  `speaker notes, \`::: {.incremental}\` and \`. . .\` make build steps, \`{ojs}\` cells are Observable JS; when you change a ` +
+  `slide's title, keep its id by adding \`{#<old id>}\` to the heading, so comments and links still find the slide), or in the files it uses ` +
   `(its .scss theme, figures). Where these instructions say to edit ${DECK_FILE} or theme.css, edit ${SOURCE} or its stylesheet ` +
   `instead. Pins and element ids (data-eid) name elements of the rendered HTML: read ${DECK_FILE} to see what they are, then ` +
   `find the matching text in ${SOURCE}. PinDeck renders after every change you save; ${CLI_CMD} shot, layout and slides wait ` +
   `for that render, and report Quarto's error if it fails. Interactive OJS output is drawn in the browser, so screenshots show it ` +
-  `only once its libraries have loaded.\n` : "";
+  `only once its libraries have loaded.\n` + (BRANDS.length ? `The deck's look comes from a Quarto format extension (` +
+  BRANDS.map((b) => b.replace(/\/brand\.css$/, "/")).join(", ") + `): read its README.md for the slide layouts and classes. ` +
+  `Its brand.css and vendor/ are locked, like brand.css in an HTML deck; its theme.css takes the talk's own styles.\n` : "") : "";
 function slidesInstructions() {
   const { selector } = deckSlides();
   return selector ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
@@ -620,7 +631,7 @@ function slidesInstructions() {
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
 function lockedPaths() {
   const { files, folders } = otherDecks();
-  return [...LOCKED, "vendor/**", ".git", ".git/**", ".pindeck", ".pindeck/**", ...OUTPUTS.flatMap((o) => [o, `${o}/**`]), ...files, ...folders.map((f) => `${f}/**`)];
+  return [...LOCKED, "vendor/**", ...BRANDS.map((b) => b.replace(/brand\.css$/, "vendor/**")), ".git", ".git/**", ".pindeck", ".pindeck/**", ...OUTPUTS.flatMap((o) => [o, `${o}/**`]), ...files, ...folders.map((f) => `${f}/**`)];
 }
 /* The other decks in this deck's folder: its other .html files, and the subfolders that hold a deck of their
    own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */

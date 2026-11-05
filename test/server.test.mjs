@@ -1715,7 +1715,8 @@ const QUARTO = findExecutable("quarto").path;
 function quartoDeck(fx) {
   const dir = path.join(fx.root, "talk");
   fs.mkdirSync(dir);
-  for (const f of ["talk.qmd", "custom.scss"]) fs.copyFileSync(path.join(ROOT, "quarto-example", f), path.join(dir, f));
+  fs.copyFileSync(path.join(ROOT, "quarto-example", "talk.qmd"), path.join(dir, "talk.qmd"));
+  fs.cpSync(path.join(ROOT, "quarto-example", "_extensions"), path.join(dir, "_extensions"), { recursive: true });
   return dir;
 }
 test("A Quarto source names its rendered deck, which shares its state", () => {
@@ -1747,7 +1748,7 @@ test("Quarto deck: rendered at start and after every source change, hand edits r
     assert.equal((await s.api(p, b)).data.code, "quarto", p);
 
   // an outside edit of the source: rendered again; what the assistant checks waits for it
-  externalEdit(dir, "talk.qmd", (q) => q.replace("## The sampling theorem", "## The Nyquist theorem"));
+  externalEdit(dir, "talk.qmd", (q) => q.replace("## The Sampling Theorem", "## The Nyquist Theorem"));
   assert.match((await s.api("slides")).data, /the-nyquist-theorem/);
   assert.match(html(), /id="the-nyquist-theorem"[^>]*data-eid=/);
   // a slide is found by its anchor too
@@ -1756,7 +1757,7 @@ test("Quarto deck: rendered at start and after every source change, hand edits r
 
   // a broken source: Quarto's message (no stack) to the assistant's commands and the chat; fixed, it renders again
   const good = fs.readFileSync(path.join(dir, "talk.qmd"), "utf8");
-  externalEdit(dir, "talk.qmd", (q) => q.replace(/^format:$/m, "format: [oops"));
+  externalEdit(dir, "talk.qmd", (q) => q.replace(/^format: ocean-revealjs$/m, "format: [oops"));
   const failed = await s.api("slides");
   assert.equal(failed.status, 409);
   assert.match(failed.data, /YAMLException/);
@@ -1770,7 +1771,9 @@ test("Quarto deck: rendered at start and after every source change, hand edits r
   await waitFor(async () => !(await s.api("status")).data.busy, "the turn");
   const argv = claudeStart(fx).argv;
   assert.match(argv[argv.indexOf("--append-system-prompt") + 1], /This deck is made with Quarto/);
-  for (const f of ["talk.html", "talk_files/**", ".quarto/**"]) assert.ok(denied(argv).includes(`Edit(./${f})`), f);
+  for (const f of ["talk.html", "talk_files/**", ".quarto/**", "_extensions/ocean/brand.css", "_extensions/ocean/vendor/**"]) assert.ok(denied(argv).includes(`Edit(./${f})`), f);
+  assert.match(argv[argv.indexOf("--append-system-prompt") + 1], /format extension \(_extensions\/ocean\/\)/);
+  assert.ok(!denied(argv).includes("Edit(./_extensions/ocean/theme.css)"), "the extension's theme.css stays editable");
   const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn entry");
   assert.deepEqual(turn.files.map((f) => f.file), ["talk.qmd"]);
   await waitFor(() => /fake append of talk\.qmd/.test(html()), "the render of Claude's edit");
