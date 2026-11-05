@@ -277,6 +277,8 @@ body.quarto #notes:empty::before { content: "Speaker notes come from ::: {.notes
 .cmt .flag { margin: 4px 0 0; color: var(--danger); font-size: 12px; }
 .cmt.resolved { opacity: .6; }
 .cmt.resolved .text { text-decoration: line-through; }
+.cmt .done { margin: 4px 0 0; color: var(--ok); font-size: 12px; }
+.cmt.resolved .done { opacity: 1; }
 
 /* ---- Delete confirmation ---- */
 .delete-dialog { width: min(460px, 92vw); padding: 0; border: 1px solid var(--line); border-radius: 12px;

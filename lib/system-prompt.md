@@ -81,6 +81,12 @@ overlapping elements, clipped text); add --issues to print only the issues. Fix 
   {{CLI}} shot <slide-eid or number>...
 only when you need a visual judgement the numbers cannot give (balance, figure content, colour)
 or the user asks; it prints the path of a PNG, which you then Read.
+## Review comments
+The user can keep comments on slides (ids c-…, numbered C1, C2, … in the editor) and ask you to address them.
+They are notes for you, not slide text or speaker notes. When you have addressed one, mark it resolved:
+  {{CLI}} resolve <comment id> <one line on what you did>
+Leave a comment open when you could not do it, or it was unclear, and say why in your reply.
+
 If the user asks for a PDF, run `{{CLI}} pdf handout` (one page per slide, build steps complete) or
 `{{CLI}} pdf presentation` (one page per build step); it prints the path of the PDF.
 

@@ -13,6 +13,9 @@
                                     from the top left), as PNG: without a name in the screenshots
                                     folder to look at, with one saved into the deck
 
+   node cli.mjs resolve <comment> [what was done]
+                                    marks a review comment resolved (its id, c-…, or its number, C3)
+
    node cli.mjs git-setup [deck]    keep PinDeck's data-eid ids out of git (no server needed; a folder or deck file)
 
    <slide> is a slide id (data-eid), a slide number (1-based) or "current". The assistant's commands reach its
@@ -59,8 +62,9 @@ if (cmd === "git-setup") {
 }
 const issuesOnly = cmd === "layout" && rest.includes("--issues");
 const slides = rest.filter((a) => a !== "--issues");
-if (!["layout", "shot", "slides", "pdf", "pdf-figure"].includes(cmd)) {
+if (!["layout", "shot", "slides", "pdf", "pdf-figure", "resolve"].includes(cmd)) {
   console.error("Usage: node cli.mjs layout|shot <slide>... [--issues]  |  node cli.mjs slides  |  node cli.mjs pdf handout|presentation  |  " +
+    "node cli.mjs resolve <comment> [what was done]  |  " +
     "node cli.mjs pdf-figure <pdf> <page> [x,y,w,h] [figures/name.png] [--width px]  |  node cli.mjs git-setup [deck]");
   process.exit(2);
 }
@@ -89,6 +93,7 @@ if (!url || !token) {
 /* layout and shot take several slides, so the assistant needs no shell loop or pipe (which PinDeck refuses) */
 const queries = cmd === "pdf-figure" ? [figureQuery([...rest])]
   : cmd === "pdf" ? [{ slide: rest[0] || "handout", ...(rest[1] === "all" ? { all: "1" } : {}) }]
+  : cmd === "resolve" ? [{ id: rest[0] || "", note: rest.slice(1).join(" ") }]
   : cmd === "slides" ? [{}] : (slides.length ? slides : ["current"]).map((slide) => ({ slide }));
 let ok = true;
 for (const q of queries) {

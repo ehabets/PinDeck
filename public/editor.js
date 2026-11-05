@@ -727,7 +727,8 @@ function renderComments() {
         <button class="small" data-act="${c.status === "resolved" ? "open" : "resolved"}">${c.status === "resolved" ? "Reopen" : "Resolve"}</button>
         <button class="small" data-act="delete" aria-label="Delete comment C${c.n}">×</button></div>
       <p class="text">${esc(c.text)}</p>
-      ${FLAG[c.loc.status] ? `<p class="flag">${esc(FLAG[c.loc.status])}</p>` : ""}
+      ${c.status === "resolved" && c.resolvedBy && c.resolvedBy !== "you" ? `<p class="done">✓ Resolved by the ${esc(c.resolvedBy)}${c.resolution ? `: ${esc(c.resolution)}` : ""}</p>` : ""}
+      ${FLAG[c.loc.status] && c.status !== "resolved" ? `<p class="flag">${esc(FLAG[c.loc.status])}</p>` : ""}
     </li>`).join("");
 }
 function toggleComments(show = $("comments-panel").hidden) {

@@ -208,7 +208,7 @@ for (const platform of ["linux", "darwin"]) {
     assert.equal(a[a.indexOf("--setting-sources") + 1], "");
     assert.ok(a.includes("--strict-mcp-config"));
     const rel = path.relative(fx.deck, path.join(ROOT, "cli.mjs")).split(path.sep).join("/");
-    const commands = ["layout", "shot", "slides", "pdf", "pdf-figure"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
+    const commands = ["layout", "shot", "slides", "pdf", "pdf-figure", "resolve"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
     assert.ok(commands.every((c) => a.includes(c)), "the CLI permissions are the quoted command, one per PinDeck command");
     const allowed = a.slice(a.indexOf("--allowedTools") + 1, a.indexOf("--disallowedTools"));
     const reads = allowed.filter((r) => /^(Read|Glob|Grep)\(/.test(r));
@@ -1685,6 +1685,16 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   assert.ok(denied(claudeStart(fx).argv).includes("Edit(./.pindeck/**)"));
   const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn entry");
   assert.deepEqual(turn.files.map((f) => f.file), ["theme.css"]);
+
+  // the assistant's command: by id or by number, with what it did; a resolved comment leaves the request
+  const second = (await s.api("comments")).data.comments[1];
+  assert.equal((await s.api("resolve?id=c-nope")).status, 404);
+  assert.equal((await s.api(`resolve?id=C2&note=${encodeURIComponent("Merged the bullets")}`)).data, `Resolved C2 (${second.id}).`);
+  const after = (await s.api("comments")).data.comments[1];
+  assert.deepEqual([after.status, after.resolvedBy, after.resolution], ["resolved", "command line", "Merged the bullets"]);
+  assert.doesNotMatch((await s.api("comments-request")).data.text, /Second/);
+  assert.match((await s.api("comments-request")).data.text, /resolve command/);
+  assert.ok(claudeStart(fx).argv.some((a) => a.endsWith(" resolve:*)")), "Claude may run the resolve command");
 
   // resolve, edit, delete
   const id = made.data.comments[0].id;

@@ -685,7 +685,7 @@ const codexInstructions = () => systemPrompt.replace(/## Attached files[\s\S]*?#
 Figures and audio are already saved under figures/. Keep their paths and use the deck's existing figure/audio patterns. Do not rename or move attachments.
 Use pindeck_read for text files, images and PDF pages (supply page: 1, then further pages as needed).
 Use pindeck_edit for exact replacements in ${DECK_FILE}, theme.css and the deck's other files, and pindeck_write to create a new file in the deck folder. Never change brand.css.
-Use pindeck_command with separate command and args for layout, shot, slides, pdf or pdf-figure.
+Use pindeck_command with separate command and args for layout, shot, slides, pdf, pdf-figure or resolve.
 Do not use shell commands, native file edits, or other tools to bypass these restrictions.
 When context mentions Read, use pindeck_read. Read screenshots with pindeck_read.
 Read README.md and the deck instructions below for conventions. Use layout after every visual change.
@@ -717,7 +717,7 @@ function makeSession(choice) {
       "--setting-sources", "", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands",   // no settings files, no MCP servers or connectors
       "--permission-mode", "default", "--permission-prompt-tool", "stdio", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
       "--allowedTools", ...readRules(), "Edit(./**)", "Write(./**)",
-      ...["layout", "shot", "slides", "pdf", "pdf-figure"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
+      ...["layout", "shot", "slides", "pdf", "pdf-figure", "resolve"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
       "--disallowedTools", ...lockedPaths().flatMap((f) => [`Edit(./${f})`, `Write(./${f})`]),
       ...(choice.model ? ["--model", choice.model] : []), ...(choice.effort ? ["--effort", choice.effort] : [])],
   });
@@ -891,7 +891,7 @@ function toolSummary(name, input = {}) {
       // must show as the script, or a refused script looks like a refused layout check
       const cmd = String(input.command || "").trim();
       const m = cmd.startsWith(CLI_CMD + " ") && cmd.slice(CLI_CMD.length).match(/^\s+([\w-]+)\s*([^\n;&|<>`$]*)$/);
-      const names = { shot: "Screenshot", layout: "Check layout", "pdf-figure": "PDF figure" };
+      const names = { shot: "Screenshot", layout: "Check layout", "pdf-figure": "PDF figure", resolve: "Resolve comment" };
       return m ? { name: names[m[1]] || m[1], detail: m[1] === "pdf-figure" ? m[2].trim().replace(/^\S*\//, "") : m[2].trim() }
                : { name: "Run", detail: cmd.split("\n")[0].slice(0, 80) };
     }
@@ -1779,6 +1779,20 @@ const server = http.createServer(async (req, res) => {
       } finally { state.preparing = null; if (!state.turn) { state.busy = false; pushStatus(); } }
     }
     if (p === "/api/comments" && req.method === "GET") return json(res, 200, commentsView());
+    // `cli.mjs resolve <id or C3> [what was done]`: the assistant (or a terminal) marks a comment resolved
+    if (p === "/api/resolve") {
+      if (!review) return text(res, 409, reviewProblem);
+      const want = String(url.searchParams.get("id") || "").trim();
+      const n = /^C(\d+)$/i.exec(want)?.[1];
+      const c = n ? review.comments[+n - 1] : review.comments.find((x) => x.id === want);
+      if (!c) return text(res, 404, `No comment "${want}". Comment ids look like c-1a2b3c4d (or C3, its number in the editor).`);
+      c.status = "resolved";
+      c.resolvedBy = state.busy ? "assistant" : "command line";
+      c.resolution = String(url.searchParams.get("note") || "").trim().slice(0, 500) || null;
+      c.updated = new Date().toISOString();
+      commentsChanged();
+      return text(res, 200, `Resolved C${review.comments.indexOf(c) + 1} (${c.id}).`);
+    }
     if (p === "/api/comments-request" && req.method === "GET") {
       if (!review) return json(res, 409, { error: reviewProblem });
       const source = reviewSource();
@@ -1802,7 +1816,11 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/comment-delete") review.comments = review.comments.filter((x) => x !== c);
       else {
         if (typeof b.text === "string") { if (!b.text.trim()) return json(res, 400, { error: "A comment cannot be empty." }); c.text = b.text.trim(); }
-        if (b.status === "open" || b.status === "resolved") c.status = b.status;
+        if (b.status === "open" || b.status === "resolved") {
+          c.status = b.status;
+          c.resolvedBy = b.status === "resolved" ? "you" : undefined;
+          if (b.status === "open") c.resolution = undefined;
+        }
         c.updated = new Date().toISOString();
       }
       return json(res, 200, commentsChanged());

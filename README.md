@@ -420,7 +420,9 @@ Schlecht's review mode.
   never attached to something else.
 * **The Comments panel** lists them with their slide; click one to go there. **Resolve** (or **Reopen**) and
   **×** in each entry. **Ask the assistant** puts all open comments into the message box as one request, to
-  read over and send; resolve each comment once it is done.
+  read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it
+  did (shown in the list under **Show resolved**), and leaves open what it could not do. **Reopen** one if
+  you disagree.
 * **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
   anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
   change. The agent sets `"status": "resolved"` in the JSON file, and the editor follows.
@@ -611,6 +613,7 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
     as a review packet for an agent outside PinDeck. After Sebastian J. Schlecht's review mode.
   - `pindeck talk.qmd` opens a Quarto deck: the assistant edits the source, PinDeck renders after every change,
     and hand edits of the output are off. An example deck in `quarto-example/`.
+  - The assistant marks the comments it has addressed as resolved (`cli.mjs resolve <id> <what it did>`).
   - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
 * **3.4.0**: formatted speaker notes, and the speaker view works.
   - The Notes field shows the notes' formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts
