@@ -124,7 +124,7 @@ const editorHost = {
     bridge.setMode(state.mode);
     bridge.setEditable(!state.busy);
     refreshPinsFromSlides();
-    bridge.renderPins(state.pins);
+    bridge.renderPins(allPins());
     if (state.sel) bridge.selectEid(state.sel.eid);
     if (state.pendingTitleEdit) { state.pendingTitleEdit = false; setTimeout(() => bridge.editTitle(), 50); }
     renderSlides();
@@ -144,6 +144,7 @@ const editorHost = {
     state.pins.push({ ...pin, n });
     pinsChanged();
   },
+  openComment(id) { openComment(id); },
   removePin(n) {
     state.pins = state.pins.filter((p) => p.n !== n);
     pinsChanged();
@@ -640,7 +641,7 @@ function refreshPinsFromSlides() {
   });
 }
 function pinsChanged() {
-  main?.bridge.renderPins(state.pins);
+  main?.bridge.renderPins(allPins());
   renderPinTray();
   renderSlides();
 }
@@ -681,6 +682,118 @@ $("pin-tray").addEventListener("mouseover", (e) => {
   if (p && p.slide.index === state.current) main?.bridge.highlight(p.eid);
 });
 $("clear-pins").onclick = () => { state.pins = []; pinsChanged(); };
+
+/* ---- Review comments (lib/review.mjs): notes on the slides, kept for later ---------------------------
+   Shown in the panel under the chat header and as blue markers on the slides (grey: the element or slide
+   they were made on is no longer there as it was). They never go into the deck. */
+const MATCHED = new Set(["ok", "moved"]);
+const FLAG = {
+  changed: "Unmatched: the element's text has changed since (already addressed?)",
+  missing: "Unmatched: the element is no longer on this slide",
+  "no-slide": "Unmatched: the slide is no longer in the deck",
+};
+state.comments = [];
+let showResolved = false;
+try { showResolved = localStorage.getItem("editor.comments.resolved") === "1"; } catch {}
+$("comments-resolved").checked = showResolved;
+const commentWhere = (c) => `S${c.loc.index != null ? c.loc.index + 1 : "?"} · ${c.target.eid ? c.target.tag.split(".")[0] : "slide"}`;
+function commentPins() {
+  return state.comments.filter((c) => c.status !== "resolved" && c.loc.slideEid).map((c) => ({
+    comment: c.id, n: "C" + c.n, stale: !MATCHED.has(c.loc.status),
+    slide: { eid: c.loc.slideEid, index: c.loc.index }, eid: c.loc.eid || c.loc.slideEid,
+    point: c.point || { x: 30, y: 30 }, at: c.at || { fx: 0, fy: 0 },
+    title: `C${c.n}: ${c.text.slice(0, 160)}${FLAG[c.loc.status] ? "\n" + FLAG[c.loc.status] : ""}`,
+  }));
+}
+const allPins = () => [...state.pins, ...commentPins()];
+function applyComments(v) {
+  state.comments = v.comments || [];
+  const open = state.comments.filter((c) => c.status !== "resolved").length;
+  $("comments-count").textContent = open || "";
+  $("comments-btn").title = v.problem || "Review comments: notes on the slides, kept for later";
+  $("comments-file").textContent = v.file ? `Saved in ${v.file}; the open ones, for an agent outside PinDeck, in ${v.packet}.` : v.problem || "";
+  renderComments();
+  main?.bridge.renderPins(allPins());
+}
+function renderComments() {
+  const list = state.comments.filter((c) => showResolved || c.status !== "resolved");
+  $("comments-empty").hidden = list.length > 0;
+  if (state.comments.length) $("comments-empty").textContent = "No open comments. Tick “Show resolved” to see the others.";
+  $("comments-send").disabled = !state.comments.some((c) => c.status !== "resolved");
+  $("comment-list").innerHTML = list.map((c) => `
+    <li class="cmt ${MATCHED.has(c.loc.status) ? "" : "stale"} ${c.status === "resolved" ? "resolved" : ""}" data-id="${esc(c.id)}">
+      <div class="top"><span class="n">C${c.n}</span> ${esc(commentWhere(c))}${c.slide.title ? ` “${esc(c.slide.title.slice(0, 40))}”` : ""}
+        <span class="spacer"></span>
+        <button class="small" data-act="${c.status === "resolved" ? "open" : "resolved"}">${c.status === "resolved" ? "Reopen" : "Resolve"}</button>
+        <button class="small" data-act="delete" aria-label="Delete comment C${c.n}">×</button></div>
+      <p class="text">${esc(c.text)}</p>
+      ${FLAG[c.loc.status] ? `<p class="flag">${esc(FLAG[c.loc.status])}</p>` : ""}
+    </li>`).join("");
+}
+function toggleComments(show = $("comments-panel").hidden) {
+  $("comments-panel").hidden = !show;
+  $("comments-btn").setAttribute("aria-expanded", String(show));
+}
+function openComment(id) {
+  const c = state.comments.find((x) => x.id === id);
+  if (!c) return;
+  if (c.status === "resolved" && !showResolved) { showResolved = true; $("comments-resolved").checked = true; renderComments(); }
+  toggleComments(true);
+  const li = $("comment-list").querySelector(`[data-id="${CSS.escape(id)}"]`);
+  li?.scrollIntoView({ block: "nearest" });
+  li?.classList.add("flash");
+  setTimeout(() => li?.classList.remove("flash"), 1200);
+}
+async function commentApi(p, b) {
+  const res = await api(p, b);
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(d.error || `Could not save the comment (${res.status}).`); return null; }
+  applyComments(d);
+  return d;
+}
+async function addComment() {
+  const text = $("input").value.trim();
+  if (!text) return toast("Write the comment in the box first, then press Comment.");
+  if (state.pins.length > 1) return toast("A comment goes on one pin (or none, for the whole slide): remove the others first.");
+  const s = state.slides[state.current];
+  const d = await commentApi("comment", { text, pin: state.pins[0] || null, slide: s ? { index: state.current, eid: s.eid } : null });
+  if (!d) return;
+  $("input").value = "";
+  autosize();
+  state.pins = [];
+  pinsChanged();
+  const c = state.comments.find((x) => x.id === d.id);
+  toast(`Kept as comment C${c?.n ?? ""}. Open Comments to see them all.`);
+}
+$("comment").onclick = addComment;
+$("comments-btn").onclick = () => toggleComments();
+$("comments-resolved").onchange = (e) => {
+  showResolved = e.target.checked;
+  try { localStorage.setItem("editor.comments.resolved", showResolved ? "1" : "0"); } catch {}
+  renderComments();
+};
+$("comment-list").addEventListener("click", (e) => {
+  const li = e.target.closest(".cmt");
+  const c = li && state.comments.find((x) => x.id === li.dataset.id);
+  if (!c) return;
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "delete") { if (confirm(`Delete comment C${c.n}?`)) commentApi("comment-delete", { id: c.id }); return; }
+  if (act) return commentApi("comment-update", { id: c.id, status: act });
+  if (c.loc.index == null) return;
+  if (c.loc.index !== state.current) goto(c.loc.index);
+  if (c.loc.eid) setTimeout(() => main?.bridge.highlight(c.loc.eid), 80);
+});
+$("comments-send").onclick = async () => {
+  const res = await api("comments-request");
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) return toast(d.error || "Could not read the comments.");
+  if (!d.text) return toast("There are no open comments.");
+  const now = $("input").value.trim();
+  $("input").value = now ? `${now}\n\n${d.text}` : d.text;
+  autosize();
+  $("input").focus();
+  toast("The open comments are in the message box: read them over, then Send. Resolve each one once it is done.", { ms: 6000 });
+};
 
 /* ---- Chat ----------------------------------------------------------------------------------------- */
 const chatEl = $("chat");
@@ -1005,7 +1118,9 @@ function connect() {
       d.chat.forEach(renderEntry);
       applyStatus(d.status);
       scrollChat();
+      api("comments").then((r) => r.json()).then(applyComments).catch(() => {});
     },
+    comments: (v) => applyComments(v),
     chat(e) {
       const change = (e.kind === "turn" || e.kind === "edit") && e.turnId;
       if (change) state.turns.set(e.turnId, { id: e.turnId, undone: false });

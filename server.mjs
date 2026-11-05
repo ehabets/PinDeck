@@ -44,6 +44,7 @@ import { assetRoots } from "./lib/asset-roots.mjs";
 import { registerServer, printLogin, alive } from "./lib/servers.mjs";
 import { goodHost, presentHost, LOGIN_PAGE, createLogin, openOnEnter } from "./lib/login.mjs";
 import { USAGE } from "./lib/usage.mjs";
+import { indexDeck, commentFromPin, locate, loadReview, saveReview, packet, request as commentsRequest, reviewFiles } from "./lib/review.mjs";
 
 /* ---- Config ------------------------------------------------------------------ */
 /* Started by the front (pindeck, front.mjs) for one of the decks it serves: the front logs browsers in and
@@ -577,7 +578,7 @@ function slidesInstructions() {
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
 function lockedPaths() {
   const { files, folders } = otherDecks();
-  return [...LOCKED, "vendor/**", ".git", ".git/**", ...files, ...folders.map((f) => `${f}/**`)];
+  return [...LOCKED, "vendor/**", ".git", ".git/**", ".pindeck", ".pindeck/**", ...files, ...folders.map((f) => `${f}/**`)];
 }
 /* The other decks in this deck's folder: its other .html files, and the subfolders that hold a deck of their
    own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */
@@ -1082,6 +1083,54 @@ async function pdfFigure({ file = "", page = "1", box = "", out = "", width = ""
   return { text: `${out} (${size})` };
 }
 
+/* ---- Review comments (lib/review.mjs) ---------------------------------------------------------------
+   Kept in <deck folder>/.pindeck/: never a deck file, never in an undo, locked for the assistant. The packet
+   next to them is written once there are comments, and again whenever they or the deck change. An agent outside
+   PinDeck may set a comment's status in the file; the editor follows. A file that cannot be read is left as it
+   is: comments are then off, with the reason. */
+const REVIEW = reviewFiles(DECK_DIR, DECK_FILE);
+let review = null, reviewProblem = null, reviewSaved = null;
+function readReview() {
+  try { review = loadReview(REVIEW.json); reviewProblem = null; }
+  catch (e) { review = null; reviewProblem = `The comments file ${REVIEW.json} cannot be read (${e.message}): fix or remove it.`; }
+  try { reviewSaved = fs.readFileSync(REVIEW.json, "utf8"); } catch { reviewSaved = null; }
+}
+readReview();
+const deckIndex = () => indexDeck(readDeck(DECK_FILE) || "");
+const reviewSource = () => null;   // the source a rendered deck is made from (Quarto), relative to the deck folder
+function commentsView(deck = deckIndex()) {
+  if (!review) return { comments: [], problem: reviewProblem };
+  return { file: path.relative(DECK_DIR, REVIEW.json), packet: path.relative(DECK_DIR, REVIEW.packet), problem: null,
+    comments: review.comments.map((c, i) => {
+      const loc = locate(deck, c);
+      return { ...c, n: i + 1, loc: { status: loc.status, index: loc.slide?.index ?? null, slideEid: loc.slide?.eid ?? null, eid: loc.eid, now: loc.now } };
+    }) };
+}
+function writePacket(deck = deckIndex()) {
+  if (!review || (!review.comments.length && !fs.existsSync(REVIEW.packet))) return;
+  const source = reviewSource();
+  let srcText = null;
+  try { if (source) srcText = fs.readFileSync(path.join(DECK_DIR, source), "utf8"); } catch {}
+  fs.mkdirSync(path.dirname(REVIEW.packet), { recursive: true });
+  writeAtomic(REVIEW.packet, packet(review, deck, { deckFile: DECK_FILE, source, srcText, commentsFile: path.relative(DECK_DIR, REVIEW.json) }));
+}
+function commentsChanged({ save = true } = {}) {
+  const deck = deckIndex();
+  if (save) { saveReview(REVIEW.json, review); reviewSaved = fs.readFileSync(REVIEW.json, "utf8"); }
+  try { writePacket(deck); } catch (e) { console.error(e.message); }
+  const view = commentsView(deck);
+  broadcast("comments", view);
+  return view;
+}
+// edits of the file by another program (an agent marks a comment resolved): polled, which survives replaced files
+fs.watchFile(REVIEW.json, { interval: 1000 }, () => {
+  let now = null;
+  try { now = fs.readFileSync(REVIEW.json, "utf8"); } catch {}
+  if (now === reviewSaved) return;
+  readReview();
+  commentsChanged({ save: false });
+});
+
 /* ---- File watching --------------------------------------------------------------------------
    Changes are collected for 120 ms and sent to the editor with the deck's revision, so a tab that missed
    events (reconnect) can still tell that it shows an old state. Dot files (PinDeck's temporary files,
@@ -1128,6 +1177,7 @@ function scheduleFlush() {
       };
       eidTimer = setTimeout(pass, 800);
     }
+    if (files.includes(DECK_FILE) && review?.comments.length) commentsChanged({ save: false });   // found again, or flagged
     if (files.includes(DECK_FILE)) {   // the slide tags, by hand or by Claude: tell both when they stop working
       const now = { selector: deckSlides().selector, problem: deckProblemNow() };
       if (now.selector !== deckNow.selector || now.problem !== deckNow.problem) {
@@ -1632,6 +1682,35 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { id: entry.id });
       } finally { state.preparing = null; if (!state.turn) { state.busy = false; pushStatus(); } }
     }
+    if (p === "/api/comments" && req.method === "GET") return json(res, 200, commentsView());
+    if (p === "/api/comments-request" && req.method === "GET") {
+      if (!review) return json(res, 409, { error: reviewProblem });
+      const source = reviewSource();
+      let srcText = null;
+      try { if (source) srcText = fs.readFileSync(path.join(DECK_DIR, source), "utf8"); } catch {}
+      return json(res, 200, { text: commentsRequest(review, deckIndex(), { source, srcText }) });
+    }
+    if (/^\/api\/comment(-update|-delete)?$/.test(p) && req.method === "POST") {
+      if (!review) return json(res, 409, { error: reviewProblem });
+      const b = await body(req);
+      if (p === "/api/comment") {
+        if (typeof b.text !== "string" || !b.text.trim()) return json(res, 400, { error: "Write the comment first." });
+        let c;
+        try { c = commentFromPin(deckIndex(), { pin: b.pin || null, slide: b.slide }, b.text); }
+        catch (e) { return json(res, 409, { error: e.message }); }
+        review.comments.push(c);
+        return json(res, 200, { id: c.id, ...commentsChanged() });
+      }
+      const c = review.comments.find((x) => x.id === b.id);
+      if (!c) return json(res, 404, { error: "No such comment (removed meanwhile?)." });
+      if (p === "/api/comment-delete") review.comments = review.comments.filter((x) => x !== c);
+      else {
+        if (typeof b.text === "string") { if (!b.text.trim()) return json(res, 400, { error: "A comment cannot be empty." }); c.text = b.text.trim(); }
+        if (b.status === "open" || b.status === "resolved") c.status = b.status;
+        c.updated = new Date().toISOString();
+      }
+      return json(res, 200, commentsChanged());
+    }
     if (p === "/api/upload" && req.method === "POST") {
       const original = decodeURIComponent(String(req.headers["x-filename"] || "file"));
       const kind = attachKind(original);
@@ -1991,6 +2070,7 @@ server.listen(PORT, "127.0.0.1", () => {
     const first = runEidPass();
     if (first.changed) console.log(`Added ${first.assigned.length} element ids to ${DECK_FILE} (backup in ${path.join(STATE_DIR, "backups")}).`);
     startWatcher();
+    try { writePacket(); } catch (e) { console.error(e.message); }
   } catch (e) {
     console.error(e.plain ? e.message : `PinDeck could not open the deck: ${e.message}`);
     removeServerInfo();
@@ -2019,6 +2099,7 @@ async function quit() {
   if (quitting) process.exit(1);
   quitting = true;
   try { watcher?.close(); } catch {}
+  fs.unwatchFile(REVIEW.json);
   clearTimeout(flush); clearTimeout(eidTimer);
   for (const res of clients) res.end();
   for (const w of pending.values()) { clearTimeout(w.t); w.reject(new Error("PinDeck is stopping")); }

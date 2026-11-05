@@ -220,7 +220,8 @@ for (const platform of ["linux", "darwin"]) {
       assert.ok(globs.length > 2 && globs.slice(1).every((g) => homes.some((h) => g.startsWith(h)) && g.endsWith("/**")), globs.join(" "));
     }
     assert.deepEqual(denied(a), ["Edit(./brand.css)", "Write(./brand.css)", "Edit(./vendor/**)", "Write(./vendor/**)",
-      "Edit(./.git)", "Write(./.git)", "Edit(./.git/**)", "Write(./.git/**)"], "the deck folder except brand.css, vendor/ and .git");
+      "Edit(./.git)", "Write(./.git)", "Edit(./.git/**)", "Write(./.git/**)",
+      "Edit(./.pindeck)", "Write(./.pindeck)", "Edit(./.pindeck/**)", "Write(./.pindeck/**)"], "the deck folder except brand.css, vendor/, .git and the comments");
 
     // a hand edit (speaker notes) is saved into the deck copy
     const eid = firstSlideEid(fx.deck);
@@ -1657,4 +1658,43 @@ test("git-setup keeps ids out of staged content; live files keep them; real edit
   assert.match(git("status", "--porcelain", "--", "index.html"), /^ M/);
   assert.match(git("diff", "--", "index.html"), /a real edit/);
   assert.doesNotMatch(git("diff", "--", "index.html"), /data-eid/);
+});
+
+test("Review comments: kept outside the deck, locked for Claude, out of a turn's changes, followed after edits", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const html = () => fs.readFileSync(path.join(fx.deck, "index.html"), "utf8");
+  const slideEid = firstSlideEid(fx.deck);
+  const deckBefore = html();
+  assert.equal((await s.api("comment", { text: " ", slide: { index: 0, eid: slideEid } })).status, 400);
+  assert.equal((await s.api("comment", { text: "x", slide: { index: 0, eid: "nope" } })).status, 409);
+  const made = await s.api("comment", { text: "Title is too long", slide: { index: 0, eid: slideEid } });
+  assert.equal(made.status, 200);
+  assert.equal(made.data.comments[0].loc.status, "ok");
+  assert.equal(made.data.file, path.join(".pindeck", "index.review.json"));
+  assert.equal(html(), deckBefore, "the deck is untouched");
+  const packetFile = path.join(fx.deck, ".pindeck", "index.review.md");
+  assert.match(fs.readFileSync(packetFile, "utf8"), /1 open comment\(s\)/);
+  assert.match((await s.api("comments-request")).data.text, /Title is too long/);
+
+  // a Claude turn: comments are locked for it, and a comment made meanwhile is no part of its change
+  assert.equal((await s.api("message", { text: "please edit theme" })).status, 200);
+  assert.equal((await s.api("comment", { text: "Second", slide: { index: 0, eid: slideEid } })).status, 200);
+  await waitFor(async () => !(await s.api("status")).data.busy, "the turn");
+  assert.ok(denied(claudeStart(fx).argv).includes("Edit(./.pindeck/**)"));
+  const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn entry");
+  assert.deepEqual(turn.files.map((f) => f.file), ["theme.css"]);
+
+  // resolve, edit, delete
+  const id = made.data.comments[0].id;
+  assert.equal((await s.api("comment-update", { id, status: "resolved" })).data.comments[0].status, "resolved");
+  assert.equal((await s.api("comment-update", { id, text: "" })).status, 400);
+  assert.equal((await s.api("comment-delete", { id })).data.comments.length, 1);
+  assert.equal((await s.api("comment-delete", { id })).status, 404);
+
+  // a broken comments file is left as it is: comments are off, with the reason
+  fs.writeFileSync(path.join(fx.deck, ".pindeck", "index.review.json"), "{ broken");
+  await waitFor(async () => (await s.api("comments")).data.problem, "the problem to show");
+  assert.equal((await s.api("comment", { text: "x", slide: { index: 0, eid: slideEid } })).status, 409);
+  assert.equal(fs.readFileSync(path.join(fx.deck, ".pindeck", "index.review.json"), "utf8"), "{ broken");
 });

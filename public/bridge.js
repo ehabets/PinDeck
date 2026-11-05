@@ -42,6 +42,9 @@
       background:#ED8C01; color:#fff; font:700 calc(14px*var(--pindeck-u,1))/calc(26px*var(--pindeck-u,1)) system-ui, sans-serif; text-align:center;
       box-shadow:0 0 0 calc(2px*var(--pindeck-u,1)) #fff, 0 calc(2px*var(--pindeck-u,1)) calc(6px*var(--pindeck-u,1)) rgba(0,0,0,.45);
       cursor:pointer; pointer-events:auto; }
+    .__pin.__comment { background:#1a73e8; border-radius:calc(6px*var(--pindeck-u,1)); width:auto; min-width:calc(26px*var(--pindeck-u,1));
+      padding:0 calc(5px*var(--pindeck-u,1)); }
+    .__pin.__stale { background:#8a8f98; }
     .__hover { position:absolute; z-index:999; pointer-events:none; outline:calc(2px*var(--pindeck-u,1)) dashed #ED8C01;
       outline-offset:calc(2px*var(--pindeck-u,1)); background:rgba(237,140,1,.06); }
     .__hover span { position:absolute; left:calc(-2px*var(--pindeck-u,1)); background:#ED8C01; color:#fff; white-space:nowrap;
@@ -102,19 +105,22 @@
   const byEid = (eid, root = document) => root.querySelector(`[data-eid="${CSS.escape(eid)}"]`);
 
   /* Visible text of an element, without KaTeX's hidden MathML copy. */
+  const MATH_TEX = 'script[type^="math/tex"]';   // MathJax 2 (Quarto) keeps the TeX here; its rendering is skipped
   function textOf(el, ownOnly) {
     if (el.tagName === "IMG") return el.getAttribute("alt") || (el.getAttribute("src") || "").split("/").pop();
     let out = "";
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
         const p = n.parentElement;
-        if (!p || p.closest(".katex-mathml, .__pin, .__hover, .__flash, .__sel, .__guide, .__edit-hint, .__hidden-banner, aside.notes, script, style")) return NodeFilter.FILTER_REJECT;
+        if (p?.matches(MATH_TEX)) return NodeFilter.FILTER_ACCEPT;
+        if (!p || p.closest(".katex-mathml, .MathJax, .MathJax_Display, .MathJax_Preview, .MathJax_CHTML, .MathJax_SVG, mjx-container, .__pin, .__hover, .__flash, .__sel, .__guide, .__edit-hint, .__hidden-banner, aside.notes, script, style")) return NodeFilter.FILTER_REJECT;
         if (ownOnly) { const owner = p.closest("[data-eid]"); if (owner !== el) return NodeFilter.FILTER_REJECT; }
         return NodeFilter.FILTER_ACCEPT;
       },
     });
     while (walker.nextNode()) {
       const n = walker.currentNode;
+      if (n.parentElement.matches(MATH_TEX)) { out += `\\(${n.nodeValue.trim()}\\) `; continue; }
       out += n.nodeValue + (n.parentElement.closest(".katex") ? "" : " "); // KaTeX splits math into one span per glyph
     }
     return out.replace(/\u200b/g, "").replace(/\s+/g, " ").trim();
@@ -250,7 +256,7 @@
       const r = document.caretRangeFromPoint(x, y);
       if (r) { node = r.startContainer; offset = r.startOffset; }
     }
-    if (!node || node.nodeType !== 3 || !el.contains(node) || node.parentElement.closest(".katex-mathml")) return null;
+    if (!node || node.nodeType !== 3 || !el.contains(node) || node.parentElement.closest(".katex-mathml, .MathJax, mjx-container")) return null;
     const s = node.nodeValue;
     const isW = (c) => /[\p{L}\p{N}_\-.,%×]/u.test(c);
     let a = offset, b = offset;
@@ -276,6 +282,8 @@
   function onClick(e) {
     if (MODE !== "main") return;
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    const comment = e.target.closest?.(".__comment");   // a review comment's marker opens it, in either mode
+    if (comment) { host()?.openComment(comment.dataset.comment); return; }
     if (mode !== "pin") return;
     const marker = e.target.closest?.(".__pin");
     if (marker) { host()?.removePin(+marker.dataset.n); return; }
@@ -329,10 +337,11 @@
         x = b.x + p.at.fx * b.w; y = b.y + p.at.fy * b.h;
       }
       const m = document.createElement("div");
-      m.className = "__pin";
+      m.className = "__pin" + (p.comment ? " __comment" : "") + (p.stale ? " __stale" : "");
       m.dataset.n = p.n;
+      if (p.comment) m.dataset.comment = p.comment;
       m.textContent = p.n;
-      m.title = "Click to remove pin " + p.n;
+      m.title = p.title || "Click to remove pin " + p.n;
       Object.assign(m.style, { left: x + "px", top: y + "px" });
       sec.appendChild(m);
     }
