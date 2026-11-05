@@ -21,7 +21,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawn, execFile } from "node:child_process";
+import { spawn, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd, decode } from "./lib/eids.mjs";
 import { unifiedDiff } from "./lib/diff.mjs";
@@ -71,8 +71,12 @@ const MODEL = opt("--model", "");
 if (process.env.CLAUDE_MODEL && !LOGIN && !FRONT)   // PinDeck 2 read it; behind the front, the front says so
   console.warn(`CLAUDE_MODEL is not used by PinDeck 3: choose the model in the editor's model menu, or start with --model ${process.env.CLAUDE_MODEL}.`);
 /* The deck: a file (talk.html), or a folder, which means its index.html (see lib/deck-target.mjs) */
-const { dir: DECK_DIR, file: DECK_FILE, named: NAMED, name: DECK_NAME, key: deckKey } = deckTarget(argv[0] || process.cwd());
-const EDITABLE = [DECK_FILE, "theme.css"];         // both backends may edit these
+const { dir: DECK_DIR, file: DECK_FILE, named: NAMED, name: DECK_NAME, key: deckKey, source: SOURCE } = deckTarget(argv[0] || process.cwd());
+/* A Quarto deck (SOURCE: talk.qmd): DECK_FILE is what Quarto renders from it, build output. The assistant edits
+   the sources; PinDeck renders after every change (see Quarto below) and adds its element ids to the output. */
+const OUTPUTS = SOURCE ? [DECK_FILE, DECK_FILE.replace(/\.html$/i, "_files"), ".quarto"] : [];
+const isOutput = (rel) => OUTPUTS.some((o) => rel === o || rel.startsWith(o + "/"));
+const EDITABLE = SOURCE ? [SOURCE, DECK_FILE] : [DECK_FILE, "theme.css"];   // both backends may edit these (a Quarto deck: its source)
 const LOCKED = ["brand.css"];                      // never, enforced twice
 const HOME_DIR = homeDir();
 const STATE_DIR = path.join(HOME_DIR, "decks", deckKey);
@@ -92,6 +96,32 @@ let ORIGIN = `http://127.0.0.1:${PORT}`;   // set again from the bound port once
 const CLI_REL = path.relative(DECK_DIR, path.join(EDITOR_DIR, "cli.mjs")).split(path.sep).join("/");
 const CLI_CMD = cliCommand(CLI_REL);
 const CAPS = detectCapabilities();
+
+/* ---- Quarto ----------------------------------------------------------------------------------------
+   `quarto render <source>` makes DECK_FILE. One render at a time; a change to a source while one runs renders
+   again when it ends. What the assistant checks (shot, layout, slides, pdf) waits for the render, so it always
+   sees its last edit. Quarto's own errors go to the chat, and to the assistant. */
+const QUARTO = SOURCE ? findExecutable(process.env.QUARTO_BIN || "quarto") : null;
+const RENDER_TIMEOUT = 180000;
+const SOURCE_FILE = /\.(qmd|md|scss|css|ya?ml|bib|csl|lua|js|png|jpe?g|gif|svg|webp|pdf|mp4|wav|mp3)$/i;   // what a render reads
+/* Quarto's message, without colours and its JavaScript stack: what says what is wrong in the source */
+const quartoError = (stderr) => `Quarto could not render ${SOURCE}:\n` + String(stderr).replace(/\x1b\[[0-9;]*m/g, "")
+  .split(/\nStack trace:|\n\s+at /)[0].trim().split("\n").slice(-25).join("\n");
+function renderSync() {
+  console.log(`Rendering ${SOURCE} with Quarto…`);
+  try { execFileSync(QUARTO.path, ["render", SOURCE], { cwd: DECK_DIR, stdio: ["ignore", "ignore", "pipe"], timeout: RENDER_TIMEOUT }); }
+  catch (e) { return quartoError(e.stderr || e.message); }
+  return fs.existsSync(path.join(DECK_DIR, DECK_FILE)) ? null
+    : `Quarto rendered ${SOURCE}, but not to ${DECK_FILE} beside it (an output-dir in _quarto.yml?). PinDeck needs the HTML next to its source.`;
+}
+if (SOURCE && !LOGIN) {
+  if (!QUARTO.path) { console.error(`${SOURCE} is a Quarto deck, and Quarto is not installed (${QUARTO.reason}). Install it from https://quarto.org.`); process.exit(1); }
+  const mtime = (f) => { try { return fs.statSync(path.join(DECK_DIR, f)).mtimeMs; } catch { return 0; } };
+  if (mtime(DECK_FILE) < mtime(SOURCE)) {
+    const failed = renderSync();
+    if (failed) { console.error(failed); process.exit(1); }
+  }
+}
 
 /* Checks before anything is written: a deck that cannot be opened or saved is left exactly as it is. */
 function checkDeck() {
@@ -305,13 +335,14 @@ function refreshGit() {
 }
 function slideList() {
   const html = readDeck(DECK_FILE);
-  return findSlides(parse(html)).map((s, index) => ({ index, eid: s.attrs["data-eid"]?.value || null }));
+  return findSlides(parse(html)).map((s, index) => ({ index, eid: s.attrs["data-eid"]?.value || null, id: s.attrs.id?.value || null }));
 }
 function resolveSlide(spec) {
   const slides = slideList();
   if (!spec || spec === "current") return slides[state.current?.index ?? 0] || slides[0];
   if (/^\d+$/.test(spec)) return slides[+spec - 1];
-  return slides.find((s) => s.eid === spec) || slides.find((s) => s.eid && s.eid.startsWith(spec));
+  // or the slide's own id attribute (Quarto's heading anchor, which stays when the title changes)
+  return slides.find((s) => s.eid === spec) || slides.find((s) => s.id === spec) || slides.find((s) => s.eid && s.eid.startsWith(spec));
 }
 
 /* ---- Headless Chrome (screenshots, and layout when no editor tab is open) --------------- */
@@ -545,7 +576,8 @@ const status = () => ({ busy: state.busy, switching: state.switching, preparing:
   running: !!session?.running, provider: settings.provider, models: catalog, deck: DECK_DIR, deckFile: DECK_FILE,
   chrome: CAPS.screenshot.available, slideSelector: deckNow.selector, deckProblem: deckNow.problem,
   capabilities: publicCapabilities(CAPS), rev: deckRev(), view: VIEW.slice(1) + "/",
-  undo: changeLabel(liveTurns().at(-1)), undoId: liveTurns().at(-1)?.id ?? null, redo: changeLabel(state.redo.at(-1)) });
+  undo: changeLabel(liveTurns().at(-1)), undoId: liveTurns().at(-1)?.id ?? null, redo: changeLabel(state.redo.at(-1)),
+  source: SOURCE, rendering: !!rendering, renderError });
 /* Pushed to the editors on every change. The model lists (both providers' catalogs) go along only when they
    changed since the last push: the editor keeps the last ones it got. */
 let catalogSent = "";
@@ -565,6 +597,16 @@ const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md
     `them with paths relative to ${DECK_FILE} (such as ../shared/style.css). You can read them; do not edit them, ` +
     `other decks may use them too.\n` : "");
 /* For a deck made without reveal.js: what its slides are, from its selector as it is at each session start */
+/* A Quarto deck: what to edit, and how its output relates to the source */
+const quartoInstructions = () => SOURCE ? `\n\n## This deck is made with Quarto
+${DECK_FILE} is rendered by Quarto from ${SOURCE}: it is build output, locked, and overwritten by every render. Make every ` +
+  `change in ${SOURCE} (Quarto Markdown: \`##\` headings start slides and become the slides' id attributes, \`::: {.notes}\` holds ` +
+  `speaker notes, \`::: {.incremental}\` and \`. . .\` make build steps, \`{ojs}\` cells are Observable JS), or in the files it uses ` +
+  `(its .scss theme, figures). Where these instructions say to edit ${DECK_FILE} or theme.css, edit ${SOURCE} or its stylesheet ` +
+  `instead. Pins and element ids (data-eid) name elements of the rendered HTML: read ${DECK_FILE} to see what they are, then ` +
+  `find the matching text in ${SOURCE}. PinDeck renders after every change you save; ${CLI_CMD} shot, layout and slides wait ` +
+  `for that render, and report Quarto's error if it fails. Interactive OJS output is drawn in the browser, so screenshots show it ` +
+  `only once its libraries have loaded.\n` : "";
 function slidesInstructions() {
   const { selector } = deckSlides();
   return selector ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
@@ -578,7 +620,7 @@ function slidesInstructions() {
    win over allow rules; a locked file changed anyway is restored after the turn (lock 2 in finishTurn). */
 function lockedPaths() {
   const { files, folders } = otherDecks();
-  return [...LOCKED, "vendor/**", ".git", ".git/**", ".pindeck", ".pindeck/**", ...files, ...folders.map((f) => `${f}/**`)];
+  return [...LOCKED, "vendor/**", ".git", ".git/**", ".pindeck", ".pindeck/**", ...OUTPUTS.flatMap((o) => [o, `${o}/**`]), ...files, ...folders.map((f) => `${f}/**`)];
 }
 /* The other decks in this deck's folder: its other .html files, and the subfolders that hold a deck of their
    own (as the deck menu lists them). Neither the assistant nor this deck's undo touches them. */
@@ -589,7 +631,7 @@ function otherDecks() {
     .map((d) => path.relative(DECK_DIR, d.dir).split(path.sep).join("/")))];
   return { files, folders };
 }
-const scanDeck = () => { const { files, folders } = otherDecks(); return scanFiles(DECK_DIR, { skip: [...files, ...folders] }); };
+const scanDeck = () => { const { files, folders } = otherDecks(); return scanFiles(DECK_DIR, { skip: [...files, ...folders, ...OUTPUTS] }); };
 
 /* Decks that share a folder share its files (theme.css, figures/): while the assistant of one works, that of
    another may change them too. Each deck server keeps the times of its turns in a file of its own under
@@ -649,7 +691,7 @@ When context mentions Read, use pindeck_read. Read screenshots with pindeck_read
 Read README.md and the deck instructions below for conventions. Use layout after every visual change.
 PDF tables should be reconstructed as HTML; pdf-figure renders figures. Audio is embedded by path.
 
-## Hand edits`) + slidesInstructions() + deckInstructions();
+## Hand edits`) + slidesInstructions() + quartoInstructions() + deckInstructions();
 function makeSession(choice) {
   let initial = null;
   const options = {
@@ -671,7 +713,7 @@ function makeSession(choice) {
     instructions: codexInstructions(), tools: agentTools }) : new ClaudeSession({ ...options,
     // a tool the rules do not allow comes to PinDeck (--permission-prompt-tool stdio), always refused: with the right command if it was the CLI
     denyMessage: (r) => r?.tool_name === "Bash" ? cliRefusal(r.input?.command, CLI_CMD) : null,
-    args: () => ["--append-system-prompt", systemPrompt + slidesInstructions() + deckInstructions(),
+    args: () => ["--append-system-prompt", systemPrompt + slidesInstructions() + quartoInstructions() + deckInstructions(),
       "--setting-sources", "", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands",   // no settings files, no MCP servers or connectors
       "--permission-mode", "default", "--permission-prompt-tool", "stdio", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
       "--allowedTools", ...readRules(), "Edit(./**)", "Write(./**)",
@@ -1097,7 +1139,7 @@ function readReview() {
 }
 readReview();
 const deckIndex = () => indexDeck(readDeck(DECK_FILE) || "");
-const reviewSource = () => null;   // the source a rendered deck is made from (Quarto), relative to the deck folder
+const reviewSource = () => SOURCE;   // the source a rendered deck is made from (Quarto), relative to the deck folder
 function commentsView(deck = deckIndex()) {
   if (!review) return { comments: [], problem: reviewProblem };
   return { file: path.relative(DECK_DIR, REVIEW.json), packet: path.relative(DECK_DIR, REVIEW.packet), problem: null,
@@ -1131,6 +1173,47 @@ fs.watchFile(REVIEW.json, { interval: 1000 }, () => {
   commentsChanged({ save: false });
 });
 
+/* Rendering while PinDeck runs (see Quarto above): started by a change to a source file */
+let rendering = null, renderAgain = false, renderError = null, renderTimer = null, renderStarted = Date.now();
+function render() {
+  clearTimeout(renderTimer);
+  renderTimer = null;
+  if (rendering) { renderAgain = true; return rendering; }
+  renderStarted = Date.now();
+  rendering = new Promise((done) => {
+    execFile(QUARTO.path, ["render", SOURCE], { cwd: DECK_DIR, timeout: RENDER_TIMEOUT, maxBuffer: 1 << 24 }, (err, _out, stderr) => {
+      const was = renderError;
+      renderError = err ? quartoError(stderr || err.message) : null;
+      if (renderError && renderError !== was) {
+        addEntry({ kind: "notice", text: renderError });
+        state.notes.push(renderError + "\nFix the source; PinDeck renders again after every change.");
+      } else if (!renderError && was) addEntry({ kind: "notice", text: `${SOURCE} renders again.` });
+      if (!err) runEidPass();   // the fresh output gets its element ids (and the editor reloads it)
+      done();
+    });
+  }).finally(() => {
+    rendering = null;
+    if (renderAgain) { renderAgain = false; render(); }
+    pushStatus();
+  });
+  pushStatus();
+  return rendering;
+}
+function sourceChanged() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(render, 150);   // an editor's save is often several events
+}
+/* Before the assistant looks at the deck: a pending or running render ends first, and a source saved since the
+   last render began (its file event may not have come yet) is rendered now */
+async function rendered() {
+  if (!SOURCE) return null;
+  let saved = 0;
+  try { saved = fs.statSync(path.join(DECK_DIR, SOURCE)).mtimeMs; } catch {}
+  if (renderTimer || saved > renderStarted) render();
+  while (rendering) await rendering;
+  return renderError;
+}
+
 /* ---- File watching --------------------------------------------------------------------------
    Changes are collected for 120 ms and sent to the editor with the deck's revision, so a tab that missed
    events (reconnect) can still tell that it shows an old state. Dot files (PinDeck's temporary files,
@@ -1141,6 +1224,10 @@ function onFileEvent(_ev, file) {
   if (!file) { changed.add(DECK_FILE); return scheduleFlush(); }   // some systems omit the name: assume the deck
   file = String(file).split(path.sep).join("/");
   if (/(^|\/)\.|\.bak$|~$|^export\//.test(file)) return;
+  if (SOURCE) {
+    if (isOutput(file)) { if (rendering || file !== DECK_FILE) return; }   // a render's own writes: its id pass reloads
+    else if (SOURCE_FILE.test(file)) sourceChanged();
+  }
   changed.add(file);
   scheduleFlush();
 }
@@ -1517,7 +1604,8 @@ function serveFile(res, file, transform, req, extra = {}) {
 
 let ready = false;
 const NEEDS_DECK = /^\/api\/(message|slides|layout|shot|pdf|pdf-figure|edit|text|split|remove|notes|delete|delete-info|source|slide-hidden|move-slide|add-slide|import-apply|export)$/;
-const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;   // answered as text, for cli.mjs
+const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;
+const HAND_EDITS = /^\/api\/(edit|text|split|remove|notes|delete|slide-hidden|move-slide|add-slide|import|import-apply)$/;   // answered as text, for cli.mjs
 /* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
    read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret.
    On localhost (Present) there is no sandbox: no login works there (see presentHost). */
@@ -1621,6 +1709,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     // the deck file gone (moved, renamed, deleted) while PinDeck runs: say so, instead of failing on it
+    // a Quarto deck is rendered from its source: no hand edits of the output (the next render would undo them)
+    if (SOURCE && req.method === "POST" && HAND_EDITS.test(p))
+      return json(res, 409, { code: "quarto", error: `${DECK_FILE} is rendered by Quarto from ${SOURCE}: ask the assistant, or edit ${SOURCE} yourself.` });
+    // what the assistant checks is the deck rendered from its last edit
+    if (SOURCE && CLI_ROUTES.test(p)) {
+      const failed = await rendered();
+      if (failed) return text(res, 409, failed + `\nFix ${SOURCE}; PinDeck renders again after every change.`);
+    }
     if (NEEDS_DECK.test(p) && readDeck(DECK_FILE) == null) {
       const why = `${path.join(DECK_DIR, DECK_FILE)} is not there any more (moved, renamed or deleted). Put it back, ` +
         `or start PinDeck for the deck where it is now.`;

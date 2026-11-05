@@ -198,7 +198,7 @@ test('separate effort menu shows native levels, readable labels, defaults and de
 test('Claude session grants only supported PinDeck helper commands', async () => {
  const vm=await import('node:vm');const source=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  const ctx=vm.createContext({ClaudeSession:class {constructor(options){Object.assign(this,options)}},
-  DECK_DIR:'/deck',ORIGIN:'http://localhost',TOKEN:'test',session:null,systemPrompt:'instructions',slidesInstructions:()=>'',deckInstructions:()=>'',
+  DECK_DIR:'/deck',ORIGIN:'http://localhost',TOKEN:'test',session:null,systemPrompt:'instructions',slidesInstructions:()=>'',quartoInstructions:()=>'',deckInstructions:()=>'',
   agentEnv:()=>({}),lockedPaths:()=>['brand.css','vendor/**','.git/**'],
   CLI_CMD:'node /app/cli.mjs',EDITABLE:['index.html','theme.css'],LOCKED:['brand.css'],fs,SHOT_DIR:'/state/shots',PDF_DIR:'/state/attachments',ASSET_ROOTS:[]});
  vm.runInContext(source.slice(source.indexOf('function makeSession(choice)'),source.indexOf('/* What each backend offers.')),ctx);

@@ -399,11 +399,52 @@ show and commit as usual. Clones without the filter configured simply see the fi
 | Attach a PDF | The same way: a figure or table to take over, or a paper or report with more details. PDFs stay outside the deck (in `~/.pindeck-v3`); the assistant reads them, rebuilds tables as HTML, and renders a figure (a page or a cropped part of one) into `<deck>/figures/` as PNG with `cli.mjs pdf-figure` (macOS, or Linux with Poppler). E.g. "put Fig. 3 of this paper on slide 7" or "add the results of Table 2 to slide 9". |
 | Export PDF | **Export ▾** in the toolbar. **Handout PDF**: one page per slide, build steps shown complete. **Presentation PDF**: one page per click, so a slide with two build steps gives three pages. Files go to `<deck>/export/`. Needs Chrome or Chromium. |
 | Navigate | Slide list, `←` `→`, or the toolbar. **Present** opens the deck in a new tab, at the current slide. |
+| Comment for later | Write a note in the message box, pin one element (or none, for the whole slide) and press **Comment** instead of Send. The comment is kept, not sent: a blue marker `C1`, `C2`, … on the slide, and an entry in **Comments** (chat header). Click a marker to open its comment. See [Review comments](#review-comments). |
 | Check from a terminal | `node cli.mjs layout 3 --issues`, `slides`, `shot 3` or `pdf handout`, in the deck's folder (or with `--deck <folder or file.html>`): asks the PinDeck that serves the deck. |
 
 You can also edit `index.html` or `theme.css` in any editor; the slide reloads, and the assistant is told
 the files changed. CSS changes are swapped in without a reload. Typing in the slide is not lost meanwhile:
 when you finish, PinDeck refuses to save it over the other change and offers the text to copy.
+
+## Review comments
+
+Review a deck first, change it later: comments are notes on slides and elements that wait, for you, for the
+assistant, or for a coding agent outside PinDeck (Claude Code in VS Code, say). Based on Sebastian J.
+Schlecht's review mode.
+
+* **Kept outside the deck.** Comments are saved in `<deck folder>/.pindeck/<deck>.review.json`, never in the
+  slides. They are no part of Undo, and the assistant cannot edit them.
+* **Found again after changes.** Each comment remembers its slide (id attribute, title, position) and its
+  element (id, tag and text, math as TeX). After an edit it is found again by them; one whose element or slide
+  is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is
+  never attached to something else.
+* **The Comments panel** lists them with their slide; click one to go there. **Resolve** (or **Reopen**) and
+  **×** in each entry. **Ask the assistant** puts all open comments into the message box as one request, to
+  read over and send; resolve each comment once it is done.
+* **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
+  anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
+  change. The agent sets `"status": "resolved"` in the JSON file, and the editor follows.
+
+## Quarto decks
+
+PinDeck opens reveal.js decks written in [Quarto](https://quarto.org): name the source, or the HTML Quarto made
+from it (the `.qmd` must be beside it).
+
+```bash
+pindeck quarto-example/talk.qmd
+```
+
+* **The source is what changes.** The rendered `talk.html` and `talk_files/` are build output: locked for the
+  assistant, which edits `talk.qmd` and the files it uses (its `.scss` theme, figures) instead. Its instructions
+  explain how pins on the rendered slides map to the source.
+* **PinDeck renders.** On start, if the HTML is older than the source, and after every change to a source file,
+  by the assistant, by Undo or by you in any editor. The slide reloads when the render is done; the
+  assistant's `shot`, `layout` and `slides` wait for it, and Quarto's errors go to the chat and to the assistant.
+* **No hand edits.** Moving, resizing, text editing, notes, new, hidden, moved or deleted slides and the
+  PowerPoint import would be overwritten by the next render, so they are off. Pins, comments, the chat,
+  Undo of the assistant's changes, screenshots and PDF export work as usual.
+* `quarto-example/` is a short signal-processing deck (sampling, aliasing, a moving-average filter) with
+  interactive Observable JS slides.
 
 ## PowerPoint import
 
@@ -547,6 +588,8 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
   without reveal.js](#decks-made-without-revealjs)). Any other deck made with another framework (Marp, Slidev,
   impress.js, remark, Spectacle, Shower, deck.js, bespoke.js) is recognised and refused with its name before
   PinDeck changes anything.
+* Quarto: the rendered HTML must be next to its source (no `output-dir` in `_quarto.yml`), and only reveal.js
+  output is supported. A render takes a few seconds; the slide shows the previous render meanwhile.
 * Text inside inline SVG diagrams cannot be edited in place; pin it and ask the assistant.
 * Parts of an inline SVG move with the whole SVG; inline text (bold, spans) moves with its block.
 * No indenting or outdenting of bullets with `Tab` yet, and `Backspace` at the start of a bullet does not merge it with the one above; ask the assistant for those.
@@ -562,6 +605,13 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
 
 ## Versions
 
+* **4.0.0-beta.1**: review comments, and Quarto decks.
+  - **Comment** keeps a note on a pinned element or a slide for later, outside the deck. Comments are found again
+    after changes or flagged, listed in the Comments panel, sent to the assistant as one request, and written
+    as a review packet for an agent outside PinDeck. After Sebastian J. Schlecht's review mode.
+  - `pindeck talk.qmd` opens a Quarto deck: the assistant edits the source, PinDeck renders after every change,
+    and hand edits of the output are off. An example deck in `quarto-example/`.
+  - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
 * **3.4.0**: formatted speaker notes, and the speaker view works.
   - The Notes field shows the notes' formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts
     a new line, and pasted text comes in plain. Notes with markup the field cannot show safely are still

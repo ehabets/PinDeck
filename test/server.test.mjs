@@ -18,6 +18,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { cliCommand, findExecutable } from "../lib/capabilities.mjs";
 import { listDecks } from "../lib/deck-list.mjs";
+import { deckTarget } from "../lib/deck-target.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVER = path.join(ROOT, "server.mjs");
@@ -1697,4 +1698,74 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   await waitFor(async () => (await s.api("comments")).data.problem, "the problem to show");
   assert.equal((await s.api("comment", { text: "x", slide: { index: 0, eid: slideEid } })).status, 409);
   assert.equal(fs.readFileSync(path.join(fx.deck, ".pindeck", "index.review.json"), "utf8"), "{ broken");
+});
+
+/* ---- Quarto decks (need the quarto command; skipped without it) ---- */
+const QUARTO = findExecutable("quarto").path;
+function quartoDeck(fx) {
+  const dir = path.join(fx.root, "talk");
+  fs.mkdirSync(dir);
+  for (const f of ["talk.qmd", "custom.scss"]) fs.copyFileSync(path.join(ROOT, "quarto-example", f), path.join(dir, f));
+  return dir;
+}
+test("A Quarto source names its rendered deck, which shares its state", () => {
+  const fx = { root: fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-qmd-")) };
+  const dir = quartoDeck(fx);
+  const a = deckTarget(path.join(dir, "talk.qmd")), b = deckTarget(path.join(dir, "talk.html"));
+  assert.deepEqual([a.file, a.source, a.key], ["talk.html", "talk.qmd", b.key]);
+  assert.equal(b.source, "talk.qmd");
+  assert.equal(deckTarget(EXAMPLE).source, null);
+  // listed before it is rendered, once
+  assert.deepEqual(listDecks([fx.root]).map((d) => [d.file, d.problem]), [["talk.qmd", null]]);
+  fs.writeFileSync(path.join(dir, "talk.html"), "<html></html>");
+  assert.deepEqual(listDecks([fx.root]).map((d) => d.file), ["talk.html"]);
+  fs.rmSync(fx.root, { recursive: true, force: true });
+});
+
+test("Quarto deck: rendered at start and after every source change, hand edits refused, Claude edits the source", { skip: !QUARTO && "quarto is not installed", timeout: 180000 }, async (t) => {
+  const fx = fixture(t);
+  const dir = quartoDeck(fx);
+  const s = await startServer(t, fx, { deck: path.join(dir, "talk.qmd") });
+  const html = () => fs.readFileSync(path.join(dir, "talk.html"), "utf8");
+  assert.match(html(), /data-eid="sampling-a-sinusoid"/, "rendered, with element ids");
+  const st = (await s.api("status")).data;
+  assert.deepEqual([st.source, st.deckFile], ["talk.qmd", "talk.html"]);
+
+  // hand edits would be undone by the next render: refused
+  const slideEid = /<section[^>]*id="sampling-a-sinusoid"[^>]*data-eid="([^"]+)"/.exec(html())[1];
+  for (const [p, b] of [["add-slide", { kind: "content", after: slideEid }], ["notes", { eid: slideEid, text: "x" }], ["slide-hidden", { eid: slideEid, hidden: true }]])
+    assert.equal((await s.api(p, b)).data.code, "quarto", p);
+
+  // an outside edit of the source: rendered again; what the assistant checks waits for it
+  externalEdit(dir, "talk.qmd", (q) => q.replace("## The sampling theorem", "## The Nyquist theorem"));
+  assert.match((await s.api("slides")).data, /the-nyquist-theorem/);
+  assert.match(html(), /id="the-nyquist-theorem"[^>]*data-eid=/);
+  // a slide is found by its anchor too
+  assert.notEqual((await s.api("layout?slide=the-nyquist-theorem")).status, 404);
+  assert.equal((await s.api("layout?slide=no-such-slide")).status, 404);
+
+  // a broken source: Quarto's message (no stack) to the assistant's commands and the chat; fixed, it renders again
+  const good = fs.readFileSync(path.join(dir, "talk.qmd"), "utf8");
+  externalEdit(dir, "talk.qmd", (q) => q.replace(/^format:$/m, "format: [oops"));
+  const failed = await s.api("slides");
+  assert.equal(failed.status, 409);
+  assert.match(failed.data, /YAMLException/);
+  assert.doesNotMatch(failed.data, /\n\s+at /);
+  await waitFor(() => chatOf(fx).some((e) => e.kind === "notice" && /YAMLException/.test(e.text)), "the error in the chat");
+  externalEdit(dir, "talk.qmd", () => good);
+  assert.equal((await s.api("slides")).status, 200);
+
+  // Claude: told about Quarto, the output locked; its edit of the source is the turn's only change, and undo renders it back
+  assert.equal((await s.api("message", { text: "fake-op append talk.qmd" })).status, 200);
+  await waitFor(async () => !(await s.api("status")).data.busy, "the turn");
+  const argv = claudeStart(fx).argv;
+  assert.match(argv[argv.indexOf("--append-system-prompt") + 1], /This deck is made with Quarto/);
+  for (const f of ["talk.html", "talk_files/**", ".quarto/**"]) assert.ok(denied(argv).includes(`Edit(./${f})`), f);
+  const turn = await waitFor(() => chatOf(fx).find((e) => e.kind === "turn"), "the turn entry");
+  assert.deepEqual(turn.files.map((f) => f.file), ["talk.qmd"]);
+  await waitFor(() => /fake append of talk\.qmd/.test(html()), "the render of Claude's edit");
+  assert.equal((await s.api("undo", {})).status, 200);
+  assert.equal(fs.readFileSync(path.join(dir, "talk.qmd"), "utf8"), good);
+  await s.api("slides");
+  assert.doesNotMatch(html(), /fake append/);
 });

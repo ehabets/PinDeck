@@ -245,7 +245,7 @@
   const presentHash = (index) => deck.hash(index);   // the slide's address in the deck opened on its own
 
   /* ---- Pins and hover ---------------------------------------------------------------------- */
-  let mode = "select", pins = [], editable = true;   // mode: "select" (drag, resize) or "pin"
+  let mode = "select", pins = [], editable = true, lockReason = null;   // lockReason: why hand edits are off for good (a Quarto deck)   // mode: "select" (drag, resize) or "pin"
   const tagOf = (el) => el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].filter((c) => !c.startsWith("__")).join(".") : "");
   function wordAt(x, y, el) {
     let node, offset;
@@ -496,7 +496,7 @@
       }
       if (!sel || sel.el !== t.el) select(t.el, t.sec);
     }
-    if (!editable) { if (handle) host()?.toast("Claude is working. Moving and resizing resume when it has finished."); return; }
+    if (!editable) { if (handle) host()?.toast(lockReason || "Claude is working. Moving and resizing resume when it has finished."); return; }
     const el = sel.el, cs = getComputedStyle(el);
     const { s } = frame(sel.sec);
     const [tx, ty] = translateOf(el);
@@ -585,7 +585,7 @@
   }
   function nudge(dx, dy) {
     if (!sel) return;
-    if (!editable) return host()?.toast("Claude is working. Moving and resizing resume when it has finished.");
+    if (!editable) return host()?.toast(lockReason || "Claude is working. Moving and resizing resume when it has finished.");
     const el = sel.el;
     const [tx, ty] = translateOf(el);
     el.style.translate = fmtTranslate(tx + dx, ty + dy);
@@ -650,7 +650,7 @@
   }
 
   async function startEdit(t, x, y, opts = {}) {
-    if (!editable) return host()?.toast("Claude is working. Editing resumes when it has finished.");
+    if (!editable) return host()?.toast(lockReason || "Claude is working. Editing resumes when it has finished.");
     if (editing) await finishEdit(true);
     const src = opts.src ?? await host()?.textSource(t.eid, t.path);
     if (src == null || !t.el.isConnected) return;
@@ -1096,7 +1096,7 @@
       isEditing: () => !!editing,
       deselect() { select(null, null); },
       hasSelection: () => !!sel,
-      setEditable(on) { editable = !!on; if (!editable && editing) finishEdit(true); if (sel) drawSel(); },
+      setEditable(on, why = null) { editable = !!on; lockReason = why; if (!editable && editing) finishEdit(true); if (sel) drawSel(); },
       renderPins,
       async measure(index) {
         goto(index);

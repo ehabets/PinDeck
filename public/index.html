@@ -113,12 +113,14 @@
         <p><strong>Pin, then ask.</strong></p>
         <p>Press <kbd>P</kbd> and click elements on the slide. Each click gets a number. Then write what to change, e.g.
           <em>“1: align with 2, make 3 smaller”</em>.</p>
-        <p>Or edit yourself: click to select, drag to move, pull a handle to resize, arrow keys to nudge,
+        <p class="hand-only">Or edit yourself: click to select, drag to move, pull a handle to resize, arrow keys to nudge,
           double-click to change the text. A selected element is what the assistant takes “this” to mean.</p>
         <p>Add figures, audio, a PDF or a screenshot with <strong>+</strong>, or drag and drop or paste a file; the assistant can put it on a slide
           or, for a paper or report, take the details from it.</p>
-        <p>The assistant edits <code id="deck-file">index.html</code>, <code>theme.css</code> and the deck's other files, checks the layout, and the slide updates here.
+        <p class="hand-only">The assistant edits <code id="deck-file">index.html</code>, <code>theme.css</code> and the deck's other files, checks the layout, and the slide updates here.
           <code>brand.css</code> is locked.</p>
+        <p class="quarto-only">This deck is made with Quarto: the assistant edits <code id="deck-source"></code> and its stylesheets, and PinDeck renders
+          the deck after every change. Edit the source yourself in any editor; the slide updates here too.</p>
       </div>
     </div>
     <div id="drop-hint" class="drop-hint" hidden><div>Drop figures, audio or PDFs to attach them</div></div>

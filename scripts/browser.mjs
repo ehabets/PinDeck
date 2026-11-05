@@ -58,7 +58,7 @@ export async function open(deck, { width = 1600, height = 1000 } = {}) {
     if (!src) throw new Error("no slide frame");
     const { targetInfos } = await cdp("Target.getTargets");
     // the frame's own URL is the redirect's target, under /v/<token>/: match it by its query
-    const t = targetInfos.filter((x) => x.type === "iframe" && /[?&]editor=main\b/.test(x.url) && x.url.endsWith(new URL(src).search)).at(-1);
+    const t = targetInfos.filter((x) => x.type === "iframe" && /[?&]editor=main\b/.test(x.url) && x.url.split("#")[0].endsWith(new URL(src).search)).at(-1);
     if (!t) throw new Error("slide frame not found");
     if (!sessions.has(t.targetId)) sessions.set(t.targetId, (await cdp("Target.attachToTarget", { targetId: t.targetId, flatten: true })).sessionId);
     return evaluate(expr, sessions.get(t.targetId));

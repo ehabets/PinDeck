@@ -122,7 +122,7 @@ const editorHost = {
     state.current = Math.min(state.current, state.slides.length - 1);
     if (inf.current !== state.current) bridge.goto(state.current);
     bridge.setMode(state.mode);
-    bridge.setEditable(!state.busy);
+    applyEditable(bridge);
     refreshPinsFromSlides();
     bridge.renderPins(allPins());
     if (state.sel) bridge.selectEid(state.sel.eid);
@@ -397,7 +397,7 @@ function notesHtml() {
 function showNotes(eid, d) {
   const rich = !d ? "" : d.html ? richNotes(d.text || "") : (d.text || "").split("\n").map(esc).join("<br>");
   notes = { eid, text: "", html: rich == null };
-  notesBox.contentEditable = !d ? "false" : notes.html ? "plaintext-only" : "true";
+  notesBox.contentEditable = !d || state.status?.source ? "false" : notes.html ? "plaintext-only" : "true";
   if (notes.html) notesBox.textContent = d.text; else notesBox.innerHTML = rich;
   notes.text = notesValue();
 }
@@ -918,11 +918,17 @@ $("shot-close").onclick = () => $("shot-dialog").close();
 // Esc closes it (the browser does that for a modal dialog), and so does a click beside the picture
 $("shot-dialog").addEventListener("click", (e) => { if (e.target === $("shot-dialog")) $("shot-dialog").close(); });
 
+/* A Quarto deck is rendered from its source: no hand edits, ever (the next render would undo them) */
+const quartoWhy = () => state.status?.source ? `This deck is rendered by Quarto from ${state.status.source}: ask the assistant for changes, or edit ${state.status.source}.` : null;
+function applyEditable(bridge = main?.bridge) {
+  bridge?.setEditable(!state.busy && !quartoWhy(), quartoWhy());
+  document.body.classList.toggle("quarto", !!quartoWhy());
+}
 function setBusy(busy) {
   state.busy = busy;
   $("notes").readOnly = busy;   // hand edits wait until the assistant has finished
-  $("working").hidden = !busy;
-  main?.bridge.setEditable(!busy);
+  $("working").hidden = !busy && !state.status?.rendering;
+  applyEditable();
   $("send").hidden = busy;
   $("stop").hidden = !busy;
 }
@@ -1029,7 +1035,7 @@ function applyStatus(s) {
   // the deck's name in the header ("ocean-example", or "talk.html" for a named deck file), its full path on hover
   if (s.deck) {
     const folder = s.deck.split(/[\\/]/).filter(Boolean).pop() || s.deck;
-    const name = s.deckFile && s.deckFile !== "index.html" ? s.deckFile : folder;
+    const name = s.source || (s.deckFile && s.deckFile !== "index.html" ? s.deckFile : folder);
     $("deck-name").textContent = name;
     $("deck-btn").title = `${s.deck}/${s.deckFile || "index.html"}${FRONT ? " (click for other decks)" : ""}`;
     if ($("deck-file")) $("deck-file").textContent = s.deckFile || "index.html";
@@ -1042,7 +1048,10 @@ function applyStatus(s) {
   renderEffortMenu();
   $("new-chat").disabled = !!s.busy;
   $("stop").hidden = !s.busy || !!s.switching;
-  $("working-text").textContent = s.switching ? "Updating model…" : s.preparing ? "Taking the screenshot…" : "The assistant is working…";
+  $("working-text").textContent = s.switching ? "Updating model…" : s.preparing ? "Taking the screenshot…" : s.busy ? "The assistant is working…"
+    : s.rendering ? `Rendering ${s.source} with Quarto…` : "";
+  $("working").hidden = !s.busy && !s.rendering;
+  if (s.source) $("deck-source").textContent = s.source;
   $("conn").classList.toggle("on", !!s.running);
   $("conn").title = s.running ? "The selected backend is running" : "The selected backend starts with the next message";
   // only the selected backend's availability matters: Codex missing is no news to someone using Claude
@@ -1354,6 +1363,7 @@ $("provider-switch").addEventListener("close", async () => {
 let deleting = false;
 async function requestDelete(eid) {
   if (deleting || !eid) return;
+  if (quartoWhy()) return toast(quartoWhy());
   if (state.busy) return toast("The assistant is working. Wait until it has finished.");
   deleting = true;
   try {

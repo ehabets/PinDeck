@@ -254,6 +254,11 @@ body.resizing-notes .stage iframe { pointer-events: none; }   /* keep the drag w
 .composer-row .spacer { flex: 1; }
 .check { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
 
+/* ---- A Quarto deck: rendered from its source, so no hand edits ---- */
+body.quarto #add-slide-btn, body.quarto .slide-list .eye, body.quarto .hand-only { display: none; }
+body:not(.quarto) .quarto-only { display: none; }
+body.quarto #notes:empty::before { content: "Speaker notes come from ::: {.notes} in the Quarto source."; }
+
 /* ---- Review comments ---- */
 .count:empty { display: none; }
 .count { background: #1a73e8; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 11px; font-weight: 600; }
