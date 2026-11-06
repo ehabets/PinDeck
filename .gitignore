@@ -2,3 +2,5 @@
 node_modules/
 # PDF exports from PinDeck
 export/
+# review comments PinDeck keeps next to each deck
+.pindeck/
