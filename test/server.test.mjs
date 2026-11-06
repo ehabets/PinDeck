@@ -1715,8 +1715,8 @@ const QUARTO = findExecutable("quarto").path;
 function quartoDeck(fx) {
   const dir = path.join(fx.root, "talk");
   fs.mkdirSync(dir);
-  fs.copyFileSync(path.join(ROOT, "quarto-example", "talk.qmd"), path.join(dir, "talk.qmd"));
-  fs.cpSync(path.join(ROOT, "quarto-example", "_extensions"), path.join(dir, "_extensions"), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "quarto-mathjax-example", "talk.qmd"), path.join(dir, "talk.qmd"));
+  fs.cpSync(path.join(ROOT, "quarto-mathjax-example", "_extensions"), path.join(dir, "_extensions"), { recursive: true });
   return dir;
 }
 test("A Quarto source names its rendered deck, which shares its state", () => {

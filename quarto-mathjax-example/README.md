@@ -7,5 +7,5 @@ Quarto format (`format: ocean-revealjs`, in `_extensions/ocean/`; see its README
 libraries from the web when shown.
 
 ```bash
-pindeck quarto-example/talk.qmd
+pindeck quarto-mathjax-example/talk.qmd
 ```

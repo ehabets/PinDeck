@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* Browser check of a Quarto deck: headless Chrome, real clicks and typing. Needs quarto and Chrome.
 
-   node scripts/quarto-check.mjs   (works on a copy of quarto-example's sources)
+   node scripts/quarto-check.mjs   (works on a copy of quarto-mathjax-example's sources)
 
    Opens talk.qmd (PinDeck renders it), checks that hand edits are off (no New slide, no text editing, read-only
    notes), that the interactive OJS slide draws and answers its slider, keeps a comment on a math formula (its
@@ -16,8 +16,8 @@ import { open, until, sleep } from "./browser.mjs";
 
 const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-quarto-")), "talk");
 fs.mkdirSync(dir);
-fs.copyFileSync(new URL("../quarto-example/talk.qmd", import.meta.url), path.join(dir, "talk.qmd"));
-fs.cpSync(new URL("../quarto-example/_extensions", import.meta.url).pathname, path.join(dir, "_extensions"), { recursive: true });
+fs.copyFileSync(new URL("../quarto-mathjax-example/talk.qmd", import.meta.url), path.join(dir, "talk.qmd"));
+fs.cpSync(new URL("../quarto-mathjax-example/_extensions", import.meta.url).pathname, path.join(dir, "_extensions"), { recursive: true });
 const b = await open(path.join(dir, "talk.qmd"));
 const shots = [];
 const shot = async (name) => { const f = path.join(b.tmp, name + ".png"); await b.shot(f); shots.push(f); };

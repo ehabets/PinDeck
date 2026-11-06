@@ -433,7 +433,7 @@ PinDeck opens reveal.js decks written in [Quarto](https://quarto.org): name the 
 from it (the `.qmd` must be beside it).
 
 ```bash
-pindeck quarto-example/talk.qmd
+pindeck quarto-mathjax-example/talk.qmd
 ```
 
 * **The source is what changes.** The rendered `talk.html` and `talk_files/` are build output: locked for the
@@ -447,9 +447,9 @@ pindeck quarto-example/talk.qmd
   Undo of the assistant's changes, screenshots and PDF export work as usual.
 * **The Ocean template in Quarto.** `format: ocean-revealjs` gives a Quarto deck the look of `ocean-example/`
   (title slide, dividers, kicker over the title, footer with slide number and logo). Copy
-  `quarto-example/_extensions/ocean/` next to your `.qmd`; its `README.md` lists the Markdown for each layout.
+  `quarto-mathjax-example/_extensions/ocean/` next to your `.qmd`; its `README.md` lists the Markdown for each layout.
   As in an HTML deck, its `brand.css` and `vendor/` are locked for the assistant and its `theme.css` is not.
-* `quarto-example/` is a short signal-processing deck in Ocean (sampling, aliasing, a moving-average filter)
+* `quarto-mathjax-example/` is a short signal-processing deck in Ocean (sampling, aliasing, a moving-average filter)
   with interactive Observable JS slides.
 
 ## PowerPoint import
@@ -616,7 +616,7 @@ Without PowerPoint or Keynote (or on other systems than macOS) only the text and
     after changes or flagged, listed in the Comments panel, sent to the assistant as one request, and written
     as a review packet for an agent outside PinDeck. After Sebastian J. Schlecht's review mode.
   - `pindeck talk.qmd` opens a Quarto deck: the assistant edits the source, PinDeck renders after every change,
-    and hand edits of the output are off. An example deck in `quarto-example/`.
+    and hand edits of the output are off. An example deck in `quarto-mathjax-example/`.
   - The assistant marks the comments it has addressed as resolved (`cli.mjs resolve <id> <what it did>`).
   - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
   - Ocean for Quarto: a format extension (`format: ocean-revealjs`) with Ocean's layouts, brand layer and footer;
