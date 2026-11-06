@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 3** (`3.4.0`). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. Coming from PinDeck 2: version 3 keeps its settings and chats in `~/.pindeck-v3`, apart from 2.x (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
+> **macOS and Linux · Version 4 beta preview** (`4.0.0-beta.1`). The beta is on npm’s `beta` channel and the [`v4-beta`](https://github.com/ehabets/PinDeck/tree/v4-beta) branch; the stable release is 3.4.0 (`npx pindeck`, on [`main`](https://github.com/ehabets/PinDeck)). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. Coming from PinDeck 2: version 3 keeps its settings and chats in `~/.pindeck-v3`, apart from 2.x (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 **Pin it. Say it. Done.** PinDeck is a local editor for HTML slide decks (reveal.js): the slides on the left, the slide in the middle, and a chat with Claude Code or OpenAI Codex on the right. You click elements to pin them, write what to change, and the selected assistant edits the HTML and CSS. The slide updates in place.
 
@@ -21,16 +21,18 @@
 
 Runs on macOS and Linux. The npm package declares `"os": ["darwin", "linux"]`, so normal npm installation rejects other operating systems. Overriding that check does not make those platforms supported. Running the server from a cloned repository on another OS shows a local support notice instead of opening the deck or starting a backend.
 
-Install from npm:
+Install the beta from npm:
 
 ```bash
-npx pindeck /path/to/deck
+npx pindeck@beta /path/to/deck
+# Or select this exact beta:
+npx pindeck@4.0.0-beta.1 /path/to/deck
 ```
 
-Or run it from source, which includes the example deck:
+Or run it from the `v4-beta` branch, which includes the example decks:
 
 ```bash
-git clone https://github.com/ehabets/PinDeck.git
+git clone -b v4-beta https://github.com/ehabets/PinDeck.git
 cd PinDeck
 node front.mjs ocean-example
 ```

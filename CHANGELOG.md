@@ -11,6 +11,11 @@ What each PinDeck version brought, newest first. Releases are on [GitHub](https:
   - The assistant marks the comments it has addressed as resolved (`cli.mjs resolve <id> <what it did>`).
   - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
   - Ocean for Quarto: a format extension (`format: ocean-revealjs`) with Ocean's layouts, brand layer and footer; the example deck uses it.
+  - **Comment** opens the Comments panel on the new comment; the panel's button that sends the open comments is now **Process Comments**.
+  - More Quarto examples: `quarto-katex-example/` (math with KaTeX) and `quarto-python-example/` (figures from Python).
+  - The message box is taller and can be resized like the notes: drag its top edge, double-click for the default size.
+  - The documentation is split out of the README into `docs/`, with this changelog.
+
 * **3.4.0**: formatted speaker notes, and the speaker view works.
   - The Notes field shows the notes' formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts a new line, and pasted text comes in plain. Notes with markup the field cannot show safely are still edited as HTML, and nothing in them is lost on save.
   - Present opens the deck on localhost, so reveal.js's speaker view (`S`) shows the notes and the next slide.
