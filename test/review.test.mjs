@@ -108,3 +108,9 @@ test("after a change comments are found again or flagged, never silently moved",
   assert.match(out, /UNMATCHED: the slide is no longer in the deck/);
   assert.match(out, /UNMATCHED: the element is no longer on this slide/);
 });
+
+test("a comments file with a comment that cannot be placed is refused, not loaded", () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-review-")), "x.review.json");
+  fs.writeFileSync(f, JSON.stringify({ comments: [{ id: "c-1", text: "x", status: "open" }] }));
+  assert.throws(() => loadReview(f), /comment 1 lacks/);
+});

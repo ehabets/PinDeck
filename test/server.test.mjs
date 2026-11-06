@@ -1696,6 +1696,12 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   assert.match((await s.api("comments-request")).data.text, /resolve command/);
   assert.ok(claudeStart(fx).argv.some((a) => a.endsWith(" resolve:*)")), "Claude may run the resolve command");
 
+  // another program's edit, not yet seen by the poll, survives a change made in the editor right after it
+  const jsonFile = path.join(fx.deck, ".pindeck", "index.review.json");
+  externalEdit(fx.deck, ".pindeck/index.review.json", (j) => j.replace('"Title is too long"', '"Edited outside"'));
+  assert.equal((await s.api("comment-update", { id: second.id, status: "open" })).status, 200);
+  assert.match(fs.readFileSync(jsonFile, "utf8"), /Edited outside/);
+
   // resolve, edit, delete
   const id = made.data.comments[0].id;
   assert.equal((await s.api("comment-update", { id, status: "resolved" })).data.comments[0].status, "resolved");
@@ -1708,6 +1714,12 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   await waitFor(async () => (await s.api("comments")).data.problem, "the problem to show");
   assert.equal((await s.api("comment", { text: "x", slide: { index: 0, eid: slideEid } })).status, 409);
   assert.equal(fs.readFileSync(path.join(fx.deck, ".pindeck", "index.review.json"), "utf8"), "{ broken");
+  // so is one with a comment that lacks what PinDeck needs to place it (it crashed the server)
+  fs.writeFileSync(jsonFile, JSON.stringify({ comments: [{ id: "c-1", text: "x", status: "open" }] }));
+  await waitFor(async () => /lacks/.test((await s.api("comments")).data.problem || ""), "the problem to show");
+  externalEdit(fx.deck, "index.html", (h) => h.replace("</body>", "<!-- touched --></body>"));
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal((await s.api("status")).status, 200, "the server still runs");
 });
 
 /* ---- Quarto decks (need the quarto command; skipped without it) ---- */
@@ -1781,4 +1793,18 @@ test("Quarto deck: rendered at start and after every source change, hand edits r
   assert.equal(fs.readFileSync(path.join(dir, "talk.qmd"), "utf8"), good);
   await s.api("slides");
   assert.doesNotMatch(html(), /fake append/);
+});
+
+test("Quarto deck: a source that fails to render at start opens the last render, with Quarto's error", { skip: !QUARTO && "quarto is not installed", timeout: 180000 }, async (t) => {
+  const fx = fixture(t);
+  const dir = quartoDeck(fx);
+  execFileSync(QUARTO, ["render", "talk.qmd"], { cwd: dir, stdio: "ignore" });
+  externalEdit(dir, "talk.qmd", (q) => q.replace(/^format: ocean-revealjs$/m, "format: [oops"));
+  fs.utimesSync(path.join(dir, "talk.qmd"), new Date(), new Date(Date.now() + 5000));   // newer than the render
+  const s = await startServer(t, fx, { deck: path.join(dir, "talk.qmd") });
+  assert.match((await s.api("status")).data.renderError, /YAMLException/);
+  await waitFor(() => chatOf(fx).some((e) => e.kind === "notice" && /YAMLException/.test(e.text)), "the error in the chat");
+  const failed = await s.api("slides");
+  assert.equal(failed.status, 409, "the assistant's checks get the error");
+  assert.match(failed.data, /YAMLException/);
 });
