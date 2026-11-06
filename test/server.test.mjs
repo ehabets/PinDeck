@@ -1726,10 +1726,10 @@ test("A Quarto source names its rendered deck, which shares its state", () => {
   assert.deepEqual([a.file, a.source, a.key], ["talk.html", "talk.qmd", b.key]);
   assert.equal(b.source, "talk.qmd");
   assert.equal(deckTarget(EXAMPLE).source, null);
-  // listed before it is rendered, once
+  // listed once, by its source, before and after it is rendered
   assert.deepEqual(listDecks([fx.root]).map((d) => [d.file, d.problem]), [["talk.qmd", null]]);
   fs.writeFileSync(path.join(dir, "talk.html"), "<html></html>");
-  assert.deepEqual(listDecks([fx.root]).map((d) => d.file), ["talk.html"]);
+  assert.deepEqual(listDecks([fx.root]).map((d) => d.file), ["talk.qmd"]);
   fs.rmSync(fx.root, { recursive: true, force: true });
 });
 
