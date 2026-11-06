@@ -10,6 +10,9 @@ What each PinDeck version brought, newest first. Releases are on
     as a review packet for an agent outside PinDeck. After Sebastian J. Schlecht's review mode.
   - `pindeck talk.qmd` opens a Quarto deck: the assistant edits the source, PinDeck renders after every change,
     and hand edits of the output are off. An example deck in `quarto-mathjax-example/`.
+  - **Edit** in the Comments panel changes a comment's text.
+  - A comment the assistant cannot do stays open with its reason on it (`cli.mjs reply <id> <why>`); **Reply**
+    to answer, and the thread goes with the comment to the assistant or an outside agent.
   - The assistant marks the comments it has addressed as resolved (`cli.mjs resolve <id> <what it did>`).
   - The command-line tools also find a slide by its id attribute (a Quarto heading's anchor).
   - Ocean for Quarto: a format extension (`format: ocean-revealjs`) with Ocean's layouts, brand layer and footer;

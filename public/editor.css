@@ -274,6 +274,11 @@ body.quarto #notes:empty::before { content: "Speaker notes come from ::: {.notes
 .cmt.stale .n { background: #8a8f98; }
 .cmt .top .spacer { flex: 1; }
 .cmt .text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt .edit { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 0; font: inherit; resize: vertical; }
+.cmt .reply { margin: 4px 0 0 10px; padding-left: 6px; border-left: 2px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt .reply.mine { border-left-color: #1a73e8; }
+.cmt.resolved .reply { text-decoration: none; }
+.cmt .edit-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; }
 .cmt .flag { margin: 4px 0 0; color: var(--danger); font-size: 12px; }
 .cmt.resolved { opacity: .6; }
 .cmt.resolved .text { text-decoration: line-through; }

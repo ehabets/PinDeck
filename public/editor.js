@@ -694,6 +694,8 @@ const FLAG = {
 };
 state.comments = [];
 let showResolved = false;
+let editing = null; // { id, text, reply }: the comment being edited or replied to, kept across re-renders (comments refresh while you type)
+const WHO = { you: "You", assistant: "Assistant", "command line": "Command line" };
 try { showResolved = localStorage.getItem("editor.comments.resolved") === "1"; } catch {}
 $("comments-resolved").checked = showResolved;
 const commentWhere = (c) => `S${c.loc.index != null ? c.loc.index + 1 : "?"} · ${c.target.eid ? c.target.tag.split(".")[0] : "slide"}`;
@@ -724,13 +726,29 @@ function renderComments() {
     <li class="cmt ${MATCHED.has(c.loc.status) ? "" : "stale"} ${c.status === "resolved" ? "resolved" : ""}" data-id="${esc(c.id)}">
       <div class="top"><span class="n">C${c.n}</span> ${esc(commentWhere(c))}${c.slide.title ? ` “${esc(c.slide.title.slice(0, 40))}”` : ""}
         <span class="spacer"></span>
+        <button class="small" data-act="reply" aria-label="Reply to comment C${c.n}">Reply</button>
+        <button class="small" data-act="edit" aria-label="Edit comment C${c.n}">Edit</button>
         <button class="small" data-act="${c.status === "resolved" ? "open" : "resolved"}">${c.status === "resolved" ? "Reopen" : "Resolve"}</button>
         <button class="small" data-act="delete" aria-label="Delete comment C${c.n}">×</button></div>
-      <p class="text">${esc(c.text)}</p>
+      ${editing?.id === c.id && !editing.reply ? editBox(c, "Save", `Text of comment C${c.n}`) : `<p class="text">${esc(c.text)}</p>`}
+      ${(c.replies || []).map((r) => `<p class="reply ${r.by === "you" ? "mine" : ""}"><b>${esc(WHO[r.by] || r.by || "Agent")}:</b> ${esc(r.text)}</p>`).join("")}
+      ${editing?.id === c.id && editing.reply ? editBox(c, "Reply", `Reply to comment C${c.n}`) : ""}
       ${c.status === "resolved" && c.resolvedBy && c.resolvedBy !== "you" ? `<p class="done">✓ Resolved by the ${esc(c.resolvedBy)}${c.resolution ? `: ${esc(c.resolution)}` : ""}</p>` : ""}
       ${FLAG[c.loc.status] && c.status !== "resolved" ? `<p class="flag">${esc(FLAG[c.loc.status])}</p>` : ""}
     </li>`).join("");
+  const box = editing && $("comment-list").querySelector("textarea.edit");
+  if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  else editing = null; // the comment is gone, or hidden as resolved
 }
+async function saveEdit() {
+  const { id, reply } = editing, text = editing.text.trim();
+  if (!text) return toast(reply ? "Write the reply first." : "A comment cannot be empty: delete it with × instead.");
+  editing = null;
+  if (!(await commentApi("comment-update", reply ? { id, reply: text } : { id, text }))) { editing = { id, text, reply }; renderComments(); }
+}
+const editBox = (c, save, label) => `<textarea class="edit" rows="3" aria-label="${label}">${esc(editing.text)}</textarea>
+      <div class="edit-actions"><button class="small" data-act="save">${save}</button> <button class="small" data-act="cancel">Cancel</button>
+        <span class="muted">⌘↩ ${save === "Save" ? "saves" : "sends"}, Esc cancels</span></div>`;
 function toggleComments(show = $("comments-panel").hidden) {
   $("comments-panel").hidden = !show;
   $("comments-btn").setAttribute("aria-expanded", String(show));
@@ -776,13 +794,23 @@ $("comments-resolved").onchange = (e) => {
 $("comment-list").addEventListener("click", (e) => {
   const li = e.target.closest(".cmt");
   const c = li && state.comments.find((x) => x.id === li.dataset.id);
-  if (!c) return;
+  if (!c || e.target.closest("textarea")) return;
   const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "edit") { editing = { id: c.id, text: c.text }; return renderComments(); }
+  if (act === "reply") { editing = { id: c.id, text: "", reply: true }; return renderComments(); }
+  if (act === "cancel") { editing = null; return renderComments(); }
+  if (act === "save") return saveEdit();
   if (act === "delete") { if (confirm(`Delete comment C${c.n}?`)) commentApi("comment-delete", { id: c.id }); return; }
   if (act) return commentApi("comment-update", { id: c.id, status: act });
   if (c.loc.index == null) return;
   if (c.loc.index !== state.current) goto(c.loc.index);
   if (c.loc.eid) setTimeout(() => main?.bridge.highlight(c.loc.eid), 80);
+});
+$("comment-list").addEventListener("input", (e) => { if (editing && e.target.matches("textarea.edit")) editing.text = e.target.value; });
+$("comment-list").addEventListener("keydown", (e) => {
+  if (!editing || !e.target.matches("textarea.edit")) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); editing = null; renderComments(); }
+  else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEdit(); }
 });
 $("comments-send").onclick = async () => {
   const res = await api("comments-request");

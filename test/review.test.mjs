@@ -114,3 +114,9 @@ test("a comments file with a comment that cannot be placed is refused, not loade
   fs.writeFileSync(f, JSON.stringify({ comments: [{ id: "c-1", text: "x", status: "open" }] }));
   assert.throws(() => loadReview(f), /comment 1 lacks/);
 });
+
+test("a comments file whose replies are not a list of texts is refused, not loaded", () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-review-")), "x.review.json");
+  fs.writeFileSync(f, JSON.stringify({ comments: [{ id: "c-1", text: "x", slide: {}, target: {}, replies: "why" }] }));
+  assert.throws(() => loadReview(f), /comment 1 has replies/);
+});

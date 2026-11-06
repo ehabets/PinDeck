@@ -61,11 +61,13 @@ Schlecht's review mode.
   element (id, tag and text, math as TeX). After an edit it is found again by them; one whose element or slide
   is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is
   never attached to something else.
-* **The Comments panel** lists them with their slide; click one to go there. **Resolve** (or **Reopen**) and
-  **×** in each entry. **Ask the assistant** puts all open comments into the message box as one request, to
+* **The Comments panel** lists them with their slide; click one to go there. **Reply**, **Edit**, **Resolve** (or
+  **Reopen**) and **×** in each entry; **Edit** changes the text in place (`⌘↩` saves, `Esc` cancels). **Ask the assistant** puts all open comments into the message box as one request, to
   read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it
-  did (shown in the list under **Show resolved**), and leaves open what it could not do. **Reopen** one if
-  you disagree.
+  did (shown in the list under **Show resolved**). One it could not do, or found unclear, it leaves open with a
+  reply on the comment saying why. **Reply** to answer it there, then **Ask the assistant** again: the
+  thread goes with the comment. **Reopen** a resolved one if you disagree.
 * **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
   anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
-  change. The agent sets `"status": "resolved"` in the JSON file, and the editor follows.
+  change. The agent sets `"status": "resolved"` in the JSON file, or leaves the comment open and adds
+  `{ "by": "agent", "text": "…" }` to its `replies`; the editor follows.

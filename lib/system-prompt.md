@@ -85,7 +85,10 @@ or the user asks; it prints the path of a PNG, which you then Read.
 The user can keep comments on slides (ids c-…, numbered C1, C2, … in the editor) and ask you to address them.
 They are notes for you, not slide text or speaker notes. When you have addressed one, mark it resolved:
   {{CLI}} resolve <comment id> <one line on what you did>
-Leave a comment open when you could not do it, or it was unclear, and say why in your reply.
+Leave a comment open when you could not do it, or it was unclear, and say why on the comment itself, where the
+user can answer you:
+  {{CLI}} reply <comment id> <why not, or what you need to know>
+A comment's thread (your replies and the user's) comes with it; read the user's latest answer before acting.
 
 If the user asks for a PDF, run `{{CLI}} pdf handout` (one page per slide, build steps complete) or
 `{{CLI}} pdf presentation` (one page per build step); it prints the path of the PDF.

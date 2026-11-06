@@ -208,7 +208,7 @@ for (const platform of ["linux", "darwin"]) {
     assert.equal(a[a.indexOf("--setting-sources") + 1], "");
     assert.ok(a.includes("--strict-mcp-config"));
     const rel = path.relative(fx.deck, path.join(ROOT, "cli.mjs")).split(path.sep).join("/");
-    const commands = ["layout", "shot", "slides", "pdf", "pdf-figure", "resolve"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
+    const commands = ["layout", "shot", "slides", "pdf", "pdf-figure", "resolve", "reply"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
     assert.ok(commands.every((c) => a.includes(c)), "the CLI permissions are the quoted command, one per PinDeck command");
     const allowed = a.slice(a.indexOf("--allowedTools") + 1, a.indexOf("--disallowedTools"));
     const reads = allowed.filter((r) => /^(Read|Glob|Grep)\(/.test(r));
@@ -1696,6 +1696,19 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   assert.match((await s.api("comments-request")).data.text, /resolve command/);
   assert.ok(claudeStart(fx).argv.some((a) => a.endsWith(" resolve:*)")), "Claude may run the resolve command");
 
+  // a comment it cannot do: the assistant replies and leaves it open; the user answers; both go with the next request
+  const first = (await s.api("comments")).data.comments[0];
+  assert.equal((await s.api("reply?id=C1")).status, 400);
+  assert.equal((await s.api(`reply?id=C1&note=${encodeURIComponent("Which title, the slide's or the talk's?")}`)).data, `Replied to C1 (${first.id}); it stays open.`);
+  assert.equal((await s.api("comment-update", { id: first.id, reply: " " })).status, 400);
+  const answered = (await s.api("comment-update", { id: first.id, reply: "The slide's" })).data.comments[0];
+  assert.deepEqual([answered.status, answered.replies.map((r) => [r.by, r.text])],
+    ["open", [["command line", "Which title, the slide's or the talk's?"], ["you", "The slide's"]]]);
+  const asked = (await s.api("comments-request")).data.text;
+  assert.match(asked, /Command line: Which title, the slide's or the talk's\?\n  - Reviewer: The slide's/);
+  assert.match(asked, /reply command/);
+  assert.match(fs.readFileSync(path.join(fx.deck, ".pindeck", "index.review.md"), "utf8"), /Reviewer: The slide's/);
+
   // another program's edit, not yet seen by the poll, survives a change made in the editor right after it
   const jsonFile = path.join(fx.deck, ".pindeck", "index.review.json");
   externalEdit(fx.deck, ".pindeck/index.review.json", (j) => j.replace('"Title is too long"', '"Edited outside"'));
@@ -1706,6 +1719,7 @@ test("Review comments: kept outside the deck, locked for Claude, out of a turn's
   const id = made.data.comments[0].id;
   assert.equal((await s.api("comment-update", { id, status: "resolved" })).data.comments[0].status, "resolved");
   assert.equal((await s.api("comment-update", { id, text: "" })).status, 400);
+  assert.equal((await s.api("comment-update", { id, text: "  Shorter title  " })).data.comments.find((c) => c.id === id).text, "Shorter title");
   assert.equal((await s.api("comment-delete", { id })).data.comments.length, 1);
   assert.equal((await s.api("comment-delete", { id })).status, 404);
 
