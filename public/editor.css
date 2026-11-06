@@ -173,7 +173,7 @@ code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: 
 /* the splitter: the panel's top edge, dragged up or down like the notes divider in PowerPoint or Keynote */
 .notes-split { position: absolute; left: 0; right: 0; top: -4px; height: 8px; z-index: 2; cursor: row-resize; touch-action: none; }
 .notes-split::after { content: ""; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background .12s; }
-.notes-split:hover::after, .notes-split:focus-visible::after, body.resizing-notes .notes-split::after { background: var(--orange); }
+.notes-split:hover::after, .notes-split:focus-visible::after, .notes-split.dragging::after { background: var(--orange); }
 .notes-split:focus-visible { outline: none; }
 .notes-panel.collapsed .notes-split { display: none; }
 body.resizing-notes { cursor: row-resize; user-select: none; }
@@ -244,11 +244,11 @@ body.resizing-notes .stage iframe { pointer-events: none; }   /* keep the drag w
 .spinner { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--orange); border-radius: 50%;
   animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.composer { border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.composer { position: relative; border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
 .pin-tray:empty { display: none; }
 .pin-tray { max-height: 96px; overflow-y: auto; }
 #input { width: 100%; resize: none; font: inherit; border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 8px 10px; min-height: 64px; max-height: 220px; outline: none; }
+  padding: 8px 10px; outline: none; }
 #input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(237,140,1,.15); }
 .composer-row { display: flex; align-items: center; gap: 8px; }
 .composer-row .spacer { flex: 1; }

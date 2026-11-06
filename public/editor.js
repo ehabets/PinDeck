@@ -482,31 +482,37 @@ function setNotesHeight(h, save = true) {
   $("notes-split").setAttribute("aria-valuenow", String(h));
   if (save) try { localStorage.setItem("editor.notesHeight", String(h)); } catch {}
 }
-$("notes-split").addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
-  e.preventDefault();
-  const split = $("notes-split"), y0 = e.clientY, h0 = notesBox.offsetHeight;
-  split.setPointerCapture(e.pointerId);
-  document.body.classList.add("resizing-notes");
-  const move = (ev) => setNotesHeight(h0 - (ev.clientY - y0));
-  const up = () => {
-    document.body.classList.remove("resizing-notes");
-    split.removeEventListener("pointermove", move);
-    split.removeEventListener("pointerup", up);
-    split.removeEventListener("pointercancel", up);
-  };
-  split.addEventListener("pointermove", move);
-  split.addEventListener("pointerup", up);
-  split.addEventListener("pointercancel", up);
-});
-$("notes-split").addEventListener("dblclick", () => setNotesHeight(NOTES_H));
-$("notes-split").addEventListener("keydown", (e) => {
-  const step = e.shiftKey ? 64 : 16;
-  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-  e.preventDefault();
-  e.stopPropagation();   // not a slide change
-  setNotesHeight(notesBox.offsetHeight + (e.key === "ArrowUp" ? step : -step));
-});
+// drag a splitter (or ↑ ↓ on it) to resize the box below it; double-click for the default size
+function splitter(split, getH, setH, defH) {
+  split.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const y0 = e.clientY, h0 = getH();
+    split.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing-notes");
+    split.classList.add("dragging");
+    const move = (ev) => setH(h0 - (ev.clientY - y0));
+    const up = () => {
+      document.body.classList.remove("resizing-notes");
+      split.classList.remove("dragging");
+      split.removeEventListener("pointermove", move);
+      split.removeEventListener("pointerup", up);
+      split.removeEventListener("pointercancel", up);
+    };
+    split.addEventListener("pointermove", move);
+    split.addEventListener("pointerup", up);
+    split.addEventListener("pointercancel", up);
+  });
+  split.addEventListener("dblclick", () => setH(defH));
+  split.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 64 : 16;
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    e.stopPropagation();   // not a slide change
+    setH(getH() + (e.key === "ArrowUp" ? step : -step));
+  });
+}
+splitter($("notes-split"), () => notesBox.offsetHeight, setNotesHeight, NOTES_H);
 setNotesHeight((() => { try { return +localStorage.getItem("editor.notesHeight") || NOTES_H; } catch { return NOTES_H; } })(), false);
 setNotesOpen((() => { try { return localStorage.getItem("editor.notes") !== "closed"; } catch { return true; } })());
 
@@ -1008,11 +1014,23 @@ $("new-chat").onclick = async () => {
   if (!confirm("Start a new conversation? The assistant forgets this chat; your slides, and Undo and Redo, stay as they are.")) return;
   await api("new-chat", {});
 };
+// the message box grows with its text from inputMin (set by dragging its top edge) up to 220 px or inputMin
+const INPUT_H = 96, INPUT_MIN = 48;
+let inputMin = (() => { try { return +localStorage.getItem("editor.inputHeight") || INPUT_H; } catch { return INPUT_H; } })();
 function autosize() {
   const t = $("input");
   t.style.height = "auto";
-  t.style.height = Math.min(220, Math.max(64, t.scrollHeight + 2)) + "px";
+  t.style.height = Math.min(Math.max(220, inputMin), Math.max(inputMin, t.scrollHeight + 2)) + "px";
 }
+function setInputHeight(h) {
+  const max = Math.max(INPUT_MIN, document.querySelector(".chat-pane").clientHeight * 0.6);
+  inputMin = Math.round(Math.min(max, Math.max(INPUT_MIN, h)));
+  $("input-split").setAttribute("aria-valuenow", String(inputMin));
+  try { localStorage.setItem("editor.inputHeight", String(inputMin)); } catch {}
+  autosize();
+}
+splitter($("input-split"), () => $("input").offsetHeight, setInputHeight, INPUT_H);
+autosize();
 $("input").addEventListener("input", autosize);
 $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
