@@ -1715,7 +1715,7 @@ const QUARTO = findExecutable("quarto").path;
 function quartoDeck(fx) {
   const dir = path.join(fx.root, "talk");
   fs.mkdirSync(dir);
-  fs.copyFileSync(path.join(ROOT, "quarto-mathjax-example", "talk.qmd"), path.join(dir, "talk.qmd"));
+  for (const f of ["talk.qmd", "refs.bib"]) fs.copyFileSync(path.join(ROOT, "quarto-mathjax-example", f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, "quarto-mathjax-example", "_extensions"), path.join(dir, "_extensions"), { recursive: true });
   return dir;
 }

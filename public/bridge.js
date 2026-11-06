@@ -245,7 +245,8 @@
   const presentHash = (index) => deck.hash(index);   // the slide's address in the deck opened on its own
 
   /* ---- Pins and hover ---------------------------------------------------------------------- */
-  let mode = "select", pins = [], editable = true, lockReason = null;   // lockReason: why hand edits are off for good (a Quarto deck)   // mode: "select" (drag, resize) or "pin"
+  // mode: "select" (drag, resize) or "pin"; lockReason: why hand edits are off for good (a Quarto deck)
+  let mode = "select", pins = [], editable = true, lockReason = null;
   const tagOf = (el) => el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].filter((c) => !c.startsWith("__")).join(".") : "");
   function wordAt(x, y, el) {
     let node, offset;

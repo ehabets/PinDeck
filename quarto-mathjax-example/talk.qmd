@@ -5,6 +5,7 @@ author: "PinDeck Example"
 institute: "Institute Name"
 event: "Signal Processing Seminar 2026"
 short-title: "Sampling and Aliasing"
+bibliography: refs.bib
 format: ocean-revealjs
 ---
 
@@ -28,11 +29,11 @@ $$
 
 ## The Sampling Theorem {kicker="Nyquist"}
 
-A signal with no energy above $f_\text{max}$ is fully determined by its samples if
+A signal with no energy above $f_\text{max}$ is fully determined by its samples [@nyquist1928; @shannon1949] if
 
 $$
 f_s > 2 f_\text{max}
-$$
+$$ {#eq-nyquist}
 
 ::: {.callout-note}
 Half the sampling rate, $f_s / 2$, is the **Nyquist frequency**. Anything above it folds back.
@@ -103,11 +104,16 @@ viewof M = Inputs.range([1, 16], {value: 4, step: 1, label: "M", width: 420})
 ## Take-Home Messages {kicker="Summary"}
 
 - Sampling keeps only the **normalized frequency** $f/f_s$
-- Sample faster than **twice the highest frequency**, or filter first
+- Sample faster than **twice the highest frequency** (@eq-nyquist), or filter first
 - A moving average is the simplest **low-pass filter**; longer means narrower
 
 ::: {.notes}
 Ask the audience which frequency a 9 Hz tone sampled at 8 Hz appears at.
+:::
+
+## References {kicker="Further reading"}
+
+::: {#refs}
 :::
 
 ## Thank You {.closing-slide}

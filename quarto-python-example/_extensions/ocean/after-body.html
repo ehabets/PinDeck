@@ -1,0 +1,42 @@
+<script>
+/* Ocean audio demo: play buttons and the sweeping waveform cursor (theme.css: .demo, .wave, .play-btn) */
+(function () {
+const players = {};
+document.querySelectorAll(".play-btn").forEach((btn) => {
+  const id = btn.dataset.target;
+  const audio = document.getElementById("audio-" + id);
+  const wave = document.getElementById("wave-" + id);
+  const cursor = wave.querySelector(".cursor");
+  const played = wave.querySelector(".played");
+  let raf = null;
+
+  const draw = () => {
+    const p = audio.duration ? audio.currentTime / audio.duration : 0;
+    cursor.style.left = `calc(${p * 100}% - 1.5px)`;
+    played.style.width = `${p * 100}%`;
+    if (!audio.paused) raf = requestAnimationFrame(draw);
+  };
+  const setState = (playing) => {
+    btn.textContent = playing ? "Pause" : "Play";
+    btn.setAttribute("aria-pressed", String(playing));
+    wave.classList.toggle("playing", playing);
+    wave.classList.toggle("paused", !playing && audio.currentTime > 0);
+  };
+
+  btn.addEventListener("click", () => {
+    if (audio.paused) { Object.values(players).forEach((p) => p.pause()); audio.play(); }
+    else audio.pause();
+  });
+  audio.addEventListener("play", () => { setState(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+  audio.addEventListener("pause", () => { setState(false); draw(); });
+  audio.addEventListener("ended", () => { audio.currentTime = 0; setState(false); wave.classList.remove("paused"); draw(); });
+  wave.addEventListener("click", (e) => {
+    const r = wave.getBoundingClientRect();
+    if (audio.duration) { audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration; draw(); }
+  });
+  players[id] = audio;
+});
+
+  Reveal.on("slidechanged", () => Object.values(players).forEach((a) => a.pause()));
+})();
+</script>

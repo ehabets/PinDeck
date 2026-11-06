@@ -56,8 +56,9 @@ Useful while developing:
   API call needs the per-run token, and deck pages run sandboxed, with no access to either. Changes that widen any of this need a good reason in the pull request.
 * **Match the code around it:** short functions, comments that say why, plain wording in the UI and
   the README.
-* **Document what users see.** Update the README: the "Working with it" table for new actions, "Current
-  Limitations" when one goes away, and a line for the "Versions" list in your pull request. The
+* **Document what users see.** Update the README and `docs/`: the "Working with it" table in
+  `docs/using.md` for new actions, "Current Limitations" in `docs/how-it-works.md` when one goes away,
+  and a line for `CHANGELOG.md` in your pull request. The
   maintainer assigns the version number (see below).
 
 ## Versions
@@ -72,7 +73,7 @@ PinDeck numbers its releases `major.minor.patch`:
   that breaks existing decks or habits.
 
 Each release is one commit titled `PinDeck X.Y: what it brings` (or `X.Y.Z`), sets `"version"` in
-`package.json` to `X.Y.Z`, adds its line at the top of the README's "Versions" list, and gets an
+`package.json` to `X.Y.Z`, adds its line at the top of `CHANGELOG.md`, and gets an
 annotated tag `vX.Y.Z` with the message `PinDeck X.Y.Z`. Commits between releases (documentation, say)
 keep the version as it is.
 

@@ -1,0 +1,61 @@
+/* ==========================================================================
+   Ocean on Quarto's markup. ocean.lua gives each slide Ocean's parts (kicker, .slide-body, footer, divider
+   number, logos); Quarto writes a few of them differently from Ocean's HTML template (the title is an h2
+   straight in the section, lists have no .bullets class, dividers have an h1). These rules place them as
+   theme.css places Ocean's own, and undo what Quarto's default theme adds.
+   ========================================================================== */
+
+/* ---- Quarto's default theme, undone ---------------------------------------------------- */
+.reveal .slides section.slide { font-size: var(--fs-body); }
+.reveal .slides section.slide p { margin: 0 0 .6em; line-height: 1.38; }
+.reveal .slides section.slide h1, .reveal .slides section.slide h2 { font-family: var(--font); text-transform: none; text-shadow: none; }
+.reveal .slide-number, .reveal .footer.footer-default { display: none; }
+
+/* ---- Slide head: the kicker (ocean.lua: {kicker="…"}) over the title ------------------------ */
+.reveal .slides section.slide > .kicker { position: absolute; left: var(--m); right: var(--m); top: var(--head-top);
+  margin: 0; font-size: 15px; line-height: 1.2; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--teal-ink); }
+.reveal .slides section.slide.level2:not(.closing-slide) > h2 { position: absolute; left: var(--m); right: var(--m); top: var(--head-top);
+  margin: 0; font-size: var(--fs-title); line-height: 1.15; font-weight: 700; color: var(--deep); letter-spacing: -0.01em; }
+.reveal .slides section.slide.level2:has(> .kicker) > h2 { top: calc(var(--head-top) + 26px); }
+
+/* ---- Lists in the body: Ocean's bullets ----------------------------------------------------- */
+.reveal .slide-body ul { list-style: none; padding: 0; margin: 0 0 .6em; }
+.reveal .slide-body ul > li { position: relative; padding-left: 34px; margin: 0 0 .6em; }
+.reveal .slide-body ul > li::before { content: ""; position: absolute; left: 2px; top: .5em;
+  width: 12px; height: 12px; border-radius: 50%; background: var(--ocean); }
+.reveal .slide-body ul ul { margin: .35em 0 0; }
+.reveal .slide-body ul ul > li { padding-left: 28px; margin: 0 0 .3em; font-size: .85em; color: #26364A; }
+.reveal .slide-body ul ul > li::before { left: 3px; top: .55em; width: 7px; height: 7px; background: none; border: 2px solid var(--lagoon); }
+.reveal .slide-body li > p { margin: 0; }
+
+/* ---- Callouts (::: {.callout-note}): Ocean's callout ------------------------------------------ */
+.reveal .slides section .slide-body div.callout { margin: 36px 0 0; background: var(--foam); border: 0; border-left: 5px solid var(--ocean);
+  border-radius: 0 12px 12px 0; box-shadow: none; padding: 18px 26px; font-size: var(--fs-small); line-height: 1.45; }
+.reveal .slides section .slide-body div.callout .callout-title, .reveal .slides section .slide-body div.callout .callout-header { display: none; }
+.reveal .slides section .slide-body div.callout .callout-body, .reveal .slides section .slide-body div.callout .callout-content { padding: 0; margin: 0; background: none; }
+.reveal .slide-body .callout p { margin: 0; }
+.reveal .slide-body .callout strong { color: var(--ocean); }
+
+/* ---- Math (MathJax): display equations left, a little larger, as Ocean's KaTeX -------------- */
+.reveal .slide-body :is(.MathJax_Display, .MJXc-display, .MathJax_SVG_Display) { text-align: left !important; margin: .5em 0 !important; }
+
+/* ---- Dividers (# Part): the title is an h1 --------------------------------------------------- */
+.reveal .slides section.section-slide > h1 { position: absolute; left: var(--m); top: 300px; margin: 0; font-size: 64px;
+  line-height: 1.08; font-weight: 700; color: #fff; letter-spacing: -0.015em; }
+
+/* ---- Interactive output (OJS): Ocean's type --------------------------------------------------- */
+.reveal .slide-body .cell-output-display, .reveal .slide-body form { font-family: var(--font); }
+.reveal .slide-body form label { font-size: var(--fs-small); color: var(--slate); }
+
+/* ---- Title slide, divider and logos: Quarto's title-block and image margins, undone ------------- */
+.reveal .slides section#title-slide { text-align: left; }
+.reveal .slides section#title-slide h1.title { margin: 0; font-size: 58px; line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; color: #fff; }
+.reveal .slides section#title-slide .subtitle { margin: 20px 0 0; font-size: 28px; line-height: 1.3; color: var(--spray); }
+.reveal .slides section#title-slide .institute { margin: 6px 0 0; padding: 0; font-size: 19px; color: var(--mist); }
+.reveal .slides section.slide img.logo, .reveal .slides section.slide .slide-foot img { margin: 0; }
+.reveal .slides section.section-slide > .logo { left: auto; top: auto; }   /* Quarto also gives dividers .title-slide */
+
+/* ---- OJS inputs: Ocean's type, a compact number box ---------------------------------------------- */
+.reveal .slide-body form input[type=number] { width: 80px; font: inherit; font-size: var(--fs-small); padding: 2px 6px;
+  border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+.reveal .slide-body form input[type=range] { accent-color: var(--ocean); }

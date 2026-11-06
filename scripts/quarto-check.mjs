@@ -16,7 +16,7 @@ import { open, until, sleep } from "./browser.mjs";
 
 const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pindeck-quarto-")), "talk");
 fs.mkdirSync(dir);
-fs.copyFileSync(new URL("../quarto-mathjax-example/talk.qmd", import.meta.url), path.join(dir, "talk.qmd"));
+for (const f of ["talk.qmd", "refs.bib"]) fs.copyFileSync(new URL("../quarto-mathjax-example/" + f, import.meta.url), path.join(dir, f));
 fs.cpSync(new URL("../quarto-mathjax-example/_extensions", import.meta.url).pathname, path.join(dir, "_extensions"), { recursive: true });
 const b = await open(path.join(dir, "talk.qmd"));
 const shots = [];

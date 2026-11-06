@@ -1,0 +1,71 @@
+# Using PinDeck
+
+[← README](../README.md)
+
+## Several decks
+
+Click the deck's name above the slide for the other decks: the `.html` files in the deck's folder and in
+the asset roots, and in their folders one level down (`lecture/index.html`). A deck opens in the same
+tab, or with ⌘-click in a new one, on the same port and login, so one SSH tunnel serves them all. Each keeps
+its own chat and undo history while it is open, and the assistant finishes a turn in a deck you leave. A
+file PinDeck cannot open is greyed out with the reason; listing a deck changes nothing, and only opening it
+adds its element ids. Symlinked decks and folders are listed too; a deck file that links to a deck in
+another folder is greyed out (open that deck itself). Started with a folder that has no `index.html`,
+PinDeck shows the list of its decks. A deck with no editor open for 30 minutes is closed (its undo history
+goes, as on a restart) and opens again when you choose it. Open as many decks in as many tabs as you like:
+the tabs of a browser share one connection for their live updates.
+
+A deck is open in one PinDeck at a time: started again for a deck that another PinDeck (another port, or
+`server.mjs` on its own) has open, PinDeck says where it is open and stops, so their chats and undo
+histories never overwrite each other. `pindeck login <deck>` and `cli.mjs` find the PinDeck that serves
+the deck, whichever port it runs on.
+
+## Working with it
+
+| Action | How |
+|---|---|
+| Select, move, resize | Select mode (`V`, the default): click an element to select it, drag to move, pull a handle to resize. Elements snap to the slide edges and centre, the footer rule and other elements (pink guides); hold `Alt` to turn snapping off, `Shift` to move along one axis. Images keep their aspect ratio (`Shift` toggles). Arrow keys nudge by 1 px, `Shift`+arrows by 10 px. `Delete` removes the selected element after a confirmation; a picture goes with its caption, and files nothing else in the deck uses can be deleted with it. `⌘Z` brings both back. |
+| Edit text | Double-click the text (or select it and press `Enter`). The element shows its source, so math appears as TeX, e.g. `\(\mu=0.5\)`. `Enter` or a click elsewhere saves, `Esc` cancels, `Shift+Enter` adds a line break, `⌘B` / `⌘I` make text bold or italic. In a bullet, `Enter` splits it at the cursor and continues in a new bullet below; `Enter` on an empty new bullet removes it and stops. Pasted text arrives as plain text. Table cells are edited one at a time. |
+| Undo, redo | `⌘Z` / `⇧⌘Z` or the toolbar arrows. One history for your hand edits and the assistant's changes. |
+| Pin elements | Press `P` (or the Pin button), click elements; each click gets a number. Click a marker to remove it, `Esc` to stop. |
+| Ask the assistant | Write in the sidebar and refer to pins by number: "1: align with 2, make 3 smaller". The selected element is sent too, so "make this smaller" works. `Enter` sends, `Shift+Enter` adds a new line. |
+| Visual questions | **+** in the chat, then **Screenshot**: the current slide with the pins of that message is attached when you send. If Chrome cannot take it, the assistant is told. **Stop** during the screenshot stops at once. |
+| Review | Each answer ends with the changed files and a **Diff** button; the most recent change still in effect also has an **Undo** button. After a restart, earlier changes keep their *undone* mark but have no Diff or Undo (the undo history ends with the run). |
+| Stop | **Stop** interrupts the assistant; the conversation continues. **New chat** starts a new conversation; your slides, Undo and Redo stay as they are. |
+| New slide | **＋ New slide** above the slide list: a **content slide** (title and bullets), a **section divider**, or a **duplicate** of the current slide. It is added after the current slide, modelled on the deck's own slides; a new content slide or divider opens its title for typing. |
+| Import from PowerPoint | **＋ New slide** → **Import from PowerPoint…**, then choose a `.pptx` file and tick the slides you want (hidden PowerPoint slides start unticked). They are added after the current slide in this deck's own layouts, and the assistant can improve the complex ones; see [PowerPoint import](preparing-decks.md#powerpoint-import). `⌘Z` removes them again, with their figures. |
+| Speaker notes | The **Notes** field under the slide shows the current slide's notes (the speaker view, `S`, shows them when presenting). Type to change them; they are saved when you click elsewhere or press `⌘Enter`, and `Esc` puts back what was there. A slide without notes gets them; emptying the field removes them. Notes show their formatting: `⌘B`, `⌘I` and `⌘U` format the selection, `Enter` starts a new line, and pasted text comes in plain. Notes with markup the field cannot show safely (other tags, styles, scripts) are edited as HTML. Drag the line above the notes to give them more or less room (double-click it for the default size); collapse them with their header. |
+| Move a slide | Drag it up or down in the slide list; an orange line shows where it will go. It moves with its notes and the comment above it, and `⌘Z` puts it back. Slides inside vertical stacks cannot be moved yet. |
+| Hide a slide | The eye on a slide in the list, or `H`. A hidden slide stays in the deck and in PinDeck (greyed out, with a banner) but is skipped when presenting and in PDFs; **Export ▾** can include hidden slides. Show it the same way. |
+| Model and effort | Choose a discovered Claude or OpenAI model in the chat header, then use the separate reasoning-effort selector. Provider changes offer an optional handover; same-provider changes continue the conversation. The choice is saved in `~/.pindeck-v3/config.json`. |
+| Attach figures and audio | **+** in the chat, then **File…**, drag and drop onto the chat or a slide, or paste an image. Files are saved in `<deck>/figures/` straight away; audio also gets a waveform SVG. Then ask the assistant, e.g. "put this figure on a new slide after 4". Removing an attachment before sending deletes the file again. |
+| Attach a PDF | The same way: a figure or table to take over, or a paper or report with more details. PDFs stay outside the deck (in `~/.pindeck-v3`); the assistant reads them, rebuilds tables as HTML, and renders a figure (a page or a cropped part of one) into `<deck>/figures/` as PNG with `cli.mjs pdf-figure` (macOS, or Linux with Poppler). E.g. "put Fig. 3 of this paper on slide 7" or "add the results of Table 2 to slide 9". |
+| Export PDF | **Export ▾** in the toolbar. **Handout PDF**: one page per slide, build steps shown complete. **Presentation PDF**: one page per click, so a slide with two build steps gives three pages. Files go to `<deck>/export/`. Needs Chrome or Chromium. |
+| Navigate | Slide list, `←` `→`, or the toolbar. **Present** opens the deck in a new tab, at the current slide. |
+| Comment for later | Write a note in the message box, pin one element (or none, for the whole slide) and press **Comment** instead of Send. The comment is kept, not sent: a blue marker `C1`, `C2`, … on the slide, and an entry in **Comments** (chat header). Click a marker to open its comment. See [Review comments](#review-comments). |
+| Check from a terminal | `node cli.mjs layout 3 --issues`, `slides`, `shot 3` or `pdf handout`, in the deck's folder (or with `--deck <folder or file.html>`): asks the PinDeck that serves the deck. |
+
+You can also edit `index.html` or `theme.css` in any editor; the slide reloads, and the assistant is told
+the files changed. CSS changes are swapped in without a reload. Typing in the slide is not lost meanwhile:
+when you finish, PinDeck refuses to save it over the other change and offers the text to copy.
+
+## Review comments
+
+Review a deck first, change it later: comments are notes on slides and elements that wait, for you, for the
+assistant, or for a coding agent outside PinDeck (Claude Code in VS Code, say). Based on Sebastian J.
+Schlecht's review mode.
+
+* **Kept outside the deck.** Comments are saved in `<deck folder>/.pindeck/<deck>.review.json`, never in the
+  slides. They are no part of Undo, and the assistant cannot edit them.
+* **Found again after changes.** Each comment remembers its slide (id attribute, title, position) and its
+  element (id, tag and text, math as TeX). After an edit it is found again by them; one whose element or slide
+  is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is
+  never attached to something else.
+* **The Comments panel** lists them with their slide; click one to go there. **Resolve** (or **Reopen**) and
+  **×** in each entry. **Ask the assistant** puts all open comments into the message box as one request, to
+  read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it
+  did (shown in the list under **Show resolved**), and leaves open what it could not do. **Reopen** one if
+  you disagree.
+* **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
+  anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
+  change. The agent sets `"status": "resolved"` in the JSON file, and the editor follows.

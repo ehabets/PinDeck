@@ -1,0 +1,18 @@
+<!-- KaTeX for this deck (html-math-method: katex): Ocean's shared macros, and display equations on the left.
+     Quarto renders every formula with katex.render; this adds the macros to each call. -->
+<script>
+(function () {
+  const MACROS = {
+    "\\vect": "\\mathbf{#1}",
+    "\\norm": "\\left\\lVert #1\\right\\rVert",
+    "\\E": "\\mathbb{E}",
+    "\\dd": "\\,\\mathrm{d}",
+  };
+  const render = katex.render;
+  katex.render = (tex, el, opts = {}) => render(tex, el, { ...opts, macros: Object.assign(opts.macros || {}, MACROS) });
+})();
+</script>
+<style>
+.reveal .slide-body .katex-display { text-align: left; margin: .5em 0; }
+.reveal .slide-body .katex-display > .katex { text-align: left; }
+</style>

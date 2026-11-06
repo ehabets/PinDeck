@@ -32,6 +32,9 @@
     "lib/",
     "public/",
     "README.md",
+    "CHANGELOG.md",
+    "docs/*.md",
+    "!docs/v4-plan.md",
     "LICENSE"
   ],
   "scripts": {

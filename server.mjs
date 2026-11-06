@@ -122,12 +122,14 @@ function renderSync() {
   return fs.existsSync(path.join(DECK_DIR, DECK_FILE)) ? null
     : `Quarto rendered ${SOURCE}, but not to ${DECK_FILE} beside it (an output-dir in _quarto.yml?). PinDeck needs the HTML next to its source.`;
 }
+let startRenderError = null;   // a failed render at start with an older output: PinDeck opens that, the assistant fixes the source
 if (SOURCE && !LOGIN) {
   if (!QUARTO.path) { console.error(`${SOURCE} is a Quarto deck, and Quarto is not installed (${QUARTO.reason}). Install it from https://quarto.org.`); process.exit(1); }
   const mtime = (f) => { try { return fs.statSync(path.join(DECK_DIR, f)).mtimeMs; } catch { return 0; } };
   if (mtime(DECK_FILE) < mtime(SOURCE)) {
     const failed = renderSync();
-    if (failed) { console.error(failed); process.exit(1); }
+    if (failed && !fs.existsSync(path.join(DECK_DIR, DECK_FILE))) { console.error(failed); process.exit(1); }
+    if (failed) { console.error(failed + `\nOpening the last render of ${SOURCE}.`); startRenderError = failed; }
   }
 }
 
@@ -604,7 +606,6 @@ const systemPrompt = fs.readFileSync(path.join(EDITOR_DIR, "lib/system-prompt.md
   (ASSET_ROOTS.length ? `\n\n## Files outside the deck folder\nThe deck may use files in ${ASSET_ROOTS.join(", ")}: refer to ` +
     `them with paths relative to ${DECK_FILE} (such as ../shared/style.css). You can read them; do not edit them, ` +
     `other decks may use them too.\n` : "");
-/* For a deck made without reveal.js: what its slides are, from its selector as it is at each session start */
 /* A Quarto deck: what to edit, and how its output relates to the source */
 const quartoInstructions = () => SOURCE ? `\n\n## This deck is made with Quarto
 ${DECK_FILE} is rendered by Quarto from ${SOURCE}: it is build output, locked, and overwritten by every render. Make every ` +
@@ -618,6 +619,7 @@ ${DECK_FILE} is rendered by Quarto from ${SOURCE}: it is build output, locked, a
   `only once its libraries have loaded.\n` + (BRANDS.length ? `The deck's look comes from a Quarto format extension (` +
   BRANDS.map((b) => b.replace(/\/brand\.css$/, "/")).join(", ") + `): read its README.md for the slide layouts and classes. ` +
   `Its brand.css and vendor/ are locked, like brand.css in an HTML deck; its theme.css takes the talk's own styles.\n` : "") : "";
+/* For a deck made without reveal.js: what its slides are, from its selector as it is at each session start */
 function slidesInstructions() {
   const { selector } = deckSlides();
   return selector ? `\n\n## Slides of this deck\nThis deck is not made with reveal.js: its slides are the elements matching the ` +
@@ -1150,7 +1152,8 @@ function readReview() {
 }
 readReview();
 const deckIndex = () => indexDeck(readDeck(DECK_FILE) || "");
-const reviewSource = () => SOURCE;   // the source a rendered deck is made from (Quarto), relative to the deck folder
+// the Quarto source's text, for the source lines of comments (null for an HTML deck)
+const sourceText = () => { try { return SOURCE ? fs.readFileSync(path.join(DECK_DIR, SOURCE), "utf8") : null; } catch { return null; } };
 function commentsView(deck = deckIndex()) {
   if (!review) return { comments: [], problem: reviewProblem };
   return { file: path.relative(DECK_DIR, REVIEW.json), packet: path.relative(DECK_DIR, REVIEW.packet), problem: null,
@@ -1161,11 +1164,8 @@ function commentsView(deck = deckIndex()) {
 }
 function writePacket(deck = deckIndex()) {
   if (!review || (!review.comments.length && !fs.existsSync(REVIEW.packet))) return;
-  const source = reviewSource();
-  let srcText = null;
-  try { if (source) srcText = fs.readFileSync(path.join(DECK_DIR, source), "utf8"); } catch {}
   fs.mkdirSync(path.dirname(REVIEW.packet), { recursive: true });
-  writeAtomic(REVIEW.packet, packet(review, deck, { deckFile: DECK_FILE, source, srcText, commentsFile: path.relative(DECK_DIR, REVIEW.json) }));
+  writeAtomic(REVIEW.packet, packet(review, deck, { deckFile: DECK_FILE, source: SOURCE, srcText: sourceText(), commentsFile: path.relative(DECK_DIR, REVIEW.json) }));
 }
 function commentsChanged({ save = true } = {}) {
   const deck = deckIndex();
@@ -1176,16 +1176,21 @@ function commentsChanged({ save = true } = {}) {
   return view;
 }
 // edits of the file by another program (an agent marks a comment resolved): polled, which survives replaced files
-fs.watchFile(REVIEW.json, { interval: 1000 }, () => {
+function syncReview() {
   let now = null;
   try { now = fs.readFileSync(REVIEW.json, "utf8"); } catch {}
-  if (now === reviewSaved) return;
+  if (now === reviewSaved) return false;
   readReview();
-  commentsChanged({ save: false });
-});
+  return true;
+}
+fs.watchFile(REVIEW.json, { interval: 1000 }, () => { if (syncReview()) commentsChanged({ save: false }); });
 
 /* Rendering while PinDeck runs (see Quarto above): started by a change to a source file */
-let rendering = null, renderAgain = false, renderError = null, renderTimer = null, renderStarted = Date.now();
+let rendering = null, renderAgain = false, renderError = startRenderError, renderTimer = null, renderStarted = Date.now();
+if (renderError) {
+  addEntry({ kind: "notice", text: renderError + `\nThe deck shown is the last render that worked.` });
+  state.notes.push(renderError + "\nFix the source; PinDeck renders again after every change.");
+}
 function render() {
   clearTimeout(renderTimer);
   renderTimer = null;
@@ -1615,8 +1620,8 @@ function serveFile(res, file, transform, req, extra = {}) {
 
 let ready = false;
 const NEEDS_DECK = /^\/api\/(message|slides|layout|shot|pdf|pdf-figure|edit|text|split|remove|notes|delete|delete-info|source|slide-hidden|move-slide|add-slide|import-apply|export)$/;
-const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;
-const HAND_EDITS = /^\/api\/(edit|text|split|remove|notes|delete|slide-hidden|move-slide|add-slide|import|import-apply)$/;   // answered as text, for cli.mjs
+const CLI_ROUTES = /^\/api\/(slides|layout|shot|pdf|pdf-figure)$/;   // answered as text, for cli.mjs
+const HAND_EDITS = /^\/api\/(edit|text|split|remove|notes|delete|slide-hidden|move-slide|add-slide|import|import-apply)$/;   // refused for a Quarto deck
 /* Scriptable files (HTML, SVG) from the deck get the sandbox, wherever they are asked for. Under /v/ they are
    read by documents of that sandboxed origin, so fonts and module scripts need CORS; the path is the secret.
    On localhost (Present) there is no sandbox: no login works there (see presentHost). */
@@ -1792,6 +1797,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/comments" && req.method === "GET") return json(res, 200, commentsView());
     // `cli.mjs resolve <id or C3> [what was done]`: the assistant (or a terminal) marks a comment resolved
     if (p === "/api/resolve") {
+      syncReview();   // the poll may not have seen another program's edit yet: saving now would undo it
       if (!review) return text(res, 409, reviewProblem);
       const want = String(url.searchParams.get("id") || "").trim();
       const n = /^C(\d+)$/i.exec(want)?.[1];
@@ -1806,12 +1812,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/comments-request" && req.method === "GET") {
       if (!review) return json(res, 409, { error: reviewProblem });
-      const source = reviewSource();
-      let srcText = null;
-      try { if (source) srcText = fs.readFileSync(path.join(DECK_DIR, source), "utf8"); } catch {}
-      return json(res, 200, { text: commentsRequest(review, deckIndex(), { source, srcText }) });
+      return json(res, 200, { text: commentsRequest(review, deckIndex(), { source: SOURCE, srcText: sourceText() }) });
     }
     if (/^\/api\/comment(-update|-delete)?$/.test(p) && req.method === "POST") {
+      syncReview();
       if (!review) return json(res, 409, { error: reviewProblem });
       const b = await body(req);
       if (p === "/api/comment") {

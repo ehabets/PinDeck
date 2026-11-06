@@ -1,0 +1,73 @@
+/* ==========================================================================
+   OCEAN BRAND LAYER. The fixed identity of the deck.
+   Replace the values here with your organisation's colours and logo, then keep
+   this file stable: theme.css holds everything that may be restyled per talk.
+   PinDeck treats this file as locked (Claude cannot edit it).
+     - the ocean palette
+     - the backgrounds and wave artwork of the title, divider and closing slides
+     - the wave strip along the top of content slides
+     - the footer: rule, text, slide number, logo
+     - logo positions
+   Canvas: 1280 x 720 px.
+   ========================================================================== */
+
+:root {
+  /* Palette */
+  --abyss:    #04152B;   /* darkest background                          */
+  --deep:     #0A2A4F;   /* titles on light slides                      */
+  --ocean:    #0B63B5;   /* primary accent: bullets, wires, buttons     */
+  --lagoon:   #19B3C9;   /* secondary accent on dark backgrounds        */
+  --teal-ink: #0B7F93;   /* turquoise that is readable on white         */
+  --foam:     #E8F4FB;   /* tints: callouts, highlighted table rows     */
+  --spray:    #7FE3F0;   /* light accent text on dark backgrounds       */
+  --mist:     #BFD9EE;   /* secondary text on dark backgrounds          */
+
+  /* Geometry */
+  --m:        64px;      /* left and right text edge                    */
+  --foot-top: 652px;     /* y of the footer rule                        */
+}
+
+/* ---- Content slides: wave strip along the top edge ---------------------------
+   Scoped to real slides: Reveal.js copies slide classes onto a full-window
+   background element, so unscoped rules would paint outside the slide. */
+.reveal .slides section.slide:not(.title-slide):not(.section-slide):not(.closing-slide)::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 1280px; height: 20px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 20' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%230A2A4F'/%3E%3Cstop offset='.55' stop-color='%230B63B5'/%3E%3Cstop offset='1' stop-color='%2319B3C9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 0H1280V11Q1240 19 1200 11T1120 11T1040 11T960 11T880 11T800 11T720 11T640 11T560 11T480 11T400 11T320 11T240 11T160 11T80 11T0 11Z' fill='url(%23g)'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%;
+}
+
+/* ---- Title, divider and closing slides: deep-ocean gradient with waves ------- */
+.reveal .slides section.title-slide,
+.reveal .slides section.section-slide,
+.reveal .slides section.closing-slide {
+  color: #fff;
+  background:
+    radial-gradient(900px 520px at 88% 8%, rgba(25,179,201,.30), transparent 65%),
+    linear-gradient(165deg, var(--abyss) 0%, var(--deep) 48%, #0B4F8F 100%);
+}
+.reveal .slides section.title-slide::after,
+.reveal .slides section.section-slide::after,
+.reveal .slides section.closing-slide::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 190px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 190' preserveAspectRatio='none'%3E%3Cpath d='M0 70 C160 30 320 110 480 72 S800 30 960 70 S1180 110 1280 64 V190 H0Z' fill='%2319B3C9' fill-opacity='.18'/%3E%3Cpath d='M0 110 C200 70 360 150 560 112 S900 70 1080 112 S1220 140 1280 104 V190 H0Z' fill='%230B63B5' fill-opacity='.45'/%3E%3Cpath d='M0 150 C240 118 420 182 640 150 S1020 118 1280 146 V190 H0Z' fill='%2304152B' fill-opacity='.55'/%3E%3C/svg%3E") no-repeat 0 100% / 100% 100%;
+}
+.reveal .slides section.section-slide::after { height: 130px; }
+
+/* ---- Logos ---------------------------------------------------------------------- */
+.title-slide .logo   { position: absolute; left: var(--m); top: 46px; width: 200px; height: 60px; }
+.section-slide .logo { position: absolute; right: var(--m); bottom: 34px; width: 150px; height: 45px; z-index: 1; }
+.closing-slide .logo { position: absolute; left: var(--m); top: 46px; width: 200px; height: 60px; }
+
+/* ---- Footer (written by ocean.lua into every content slide) -------------------- */
+.reveal .slides section.slide > .slide-foot {
+  position: absolute; left: 0; top: 0; width: 1280px; height: 720px; pointer-events: none;
+  font-size: 13px; line-height: 16px; color: #5B6B7F;
+}
+.slide-foot::before {         /* rule: ocean to lagoon, between the margins */
+  content: ""; position: absolute; left: var(--m); right: var(--m); top: var(--foot-top); height: 2px;
+  background: linear-gradient(90deg, var(--deep), var(--ocean) 55%, var(--lagoon));
+}
+.slide-foot .f-left { position: absolute; left: var(--m); top: 668px; white-space: nowrap; }
+.slide-foot .f-mid  { position: absolute; left: 340px; width: 600px; top: 668px; text-align: center; white-space: nowrap; }
+.slide-foot .f-num  { position: absolute; left: 1000px; width: 70px; top: 664px; text-align: right;
+  font-size: 18px; line-height: 24px; font-weight: 700; color: var(--ocean); font-variant-numeric: tabular-nums; }
+.slide-foot .f-logo { position: absolute; left: 1096px; top: 663px; width: 120px; height: 36px; }

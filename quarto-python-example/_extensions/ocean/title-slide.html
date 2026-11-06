@@ -1,0 +1,18 @@
+<section id="title-slide" class="slide title-slide quarto-title-block"$for(title-slide-attributes/pairs)$ $it.key$="$it.value$"$endfor$>
+  <img class="logo" src="$ocean-dir$/assets/logo-placeholder-light.svg" alt="Logo">
+$if(event)$
+  <div class="event">$event$</div>
+$endif$
+  <div class="title-block">
+    <h1 class="title">$title$</h1>
+$if(subtitle)$
+    <p class="subtitle">$subtitle$</p>
+$endif$
+  </div>
+  <div class="author-block">
+    <div class="authors">$for(by-author)$$it.name.literal$$sep$, $endfor$</div>
+$if(ocean-institute)$
+    <div class="institute">$ocean-institute$</div>
+$endif$
+  </div>
+</section>
