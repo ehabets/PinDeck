@@ -787,8 +787,7 @@ async function addComment() {
   autosize();
   state.pins = [];
   pinsChanged();
-  const c = state.comments.find((x) => x.id === d.id);
-  toast(`Kept as comment C${c?.n ?? ""}. Open Comments to see them all.`);
+  openComment(d.id);   // the panel opens on the new comment, so it is seen where it was kept
 }
 $("comment").onclick = addComment;
 $("comments-btn").onclick = () => toggleComments();

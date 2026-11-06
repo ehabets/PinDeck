@@ -62,10 +62,10 @@ Schlecht's review mode.
   is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is
   never attached to something else.
 * **The Comments panel** lists them with their slide; click one to go there. **Reply**, **Edit**, **Resolve** (or
-  **Reopen**) and **×** in each entry; **Edit** changes the text in place (`⌘↩` saves, `Esc` cancels). **Ask the assistant** puts all open comments into the message box as one request, to
+  **Reopen**) and **×** in each entry; **Edit** changes the text in place (`⌘↩` saves, `Esc` cancels). **Process Comments** puts all open comments into the message box as one request, to
   read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it
   did (shown in the list under **Show resolved**). One it could not do, or found unclear, it leaves open with a
-  reply on the comment saying why. **Reply** to answer it there, then **Ask the assistant** again: the
+  reply on the comment saying why. **Reply** to answer it there, then **Process Comments** again: the
   thread goes with the comment. **Reopen** a resolved one if you disagree.
 * **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
   anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
