@@ -79,6 +79,24 @@ test('bridge edits and creates other deck files, never locked paths or files out
  assert.equal(fs.readFileSync(path.join(shared,'style.css'),'utf8'),'shared');
  assert.deepEqual(fs.readdirSync(deck).filter(f=>f.includes('.pindeck-')),[]);   // no temporary files left behind
 });
+test('bridge pdf-figure never writes through a linked figures folder or output file',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pindeck-tools-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const deck=path.join(root,'deck'),outside=path.join(root,'outside'),figures=path.join(deck,'figures');
+ fs.mkdirSync(deck);fs.mkdirSync(outside);fs.writeFileSync(path.join(deck,'paper.pdf'),'%PDF');fs.writeFileSync(path.join(outside,'victim.svg'),'keep');
+ const cli=path.join(root,'cli.mjs');fs.writeFileSync(cli,'console.log("ran "+process.argv.slice(2).join(" "))');
+ const tools=createDeckTools({deckDir:deck,cliFile:cli,env:{}});
+ const run=(...out)=>tools('pindeck_command',{command:'pdf-figure',args:['paper.pdf','1',...out]});
+ fs.symlinkSync(outside,figures);
+ await assert.rejects(run('figures/fig.svg'),/Linked figures directory/);
+ fs.unlinkSync(figures);fs.mkdirSync(figures);
+ fs.symlinkSync(path.join(outside,'victim.svg'),path.join(figures,'sym.svg'));
+ await assert.rejects(run('figures/sym.svg'),/Linked or invalid output/);
+ fs.linkSync(path.join(outside,'victim.svg'),path.join(figures,'hard.svg'));
+ await assert.rejects(run('figures/hard.svg'),/Linked or invalid output/);
+ await assert.rejects(run('figures/../escape.svg'),/Linked or invalid output/);
+ assert.equal(fs.readFileSync(path.join(outside,'victim.svg'),'utf8'),'keep');
+ assert.match((await run('figures/new.svg'))[0].text,/^ran pdf-figure paper\.pdf 1 figures\/new\.svg/);   // the CLI runs once the outputs are safe
+});
 test('Codex rejects stale tool calls, declines native approvals and finalizes a turn once',async()=>{
  const replies=[],events=[];let calls=0;
  const s=new CodexSession({onEvent:e=>events.push(e),tools:async()=>{calls++;return[];}});
