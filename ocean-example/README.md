@@ -1,8 +1,6 @@
 # Ocean slide template
 
-A 16:9 reveal.js deck (1280 × 720) with a deep-ocean look: gradient title and divider slides with
-layered waves, a wave strip on content slides, blue and turquoise accents, and Inter as the font.
-Every name, logo and number in it is a placeholder. Everything is bundled, so it runs offline.
+A 16:9 reveal.js deck (1280 × 720) with a deep-ocean look: gradient title and divider slides with layered waves, a wave strip on content slides, blue and turquoise accents, and Inter as the font. Every name, logo and number in it is a placeholder. Everything is bundled, so it runs offline.
 
 ## Use it
 
@@ -25,10 +23,7 @@ Every name, logo and number in it is a placeholder. Everything is bundled, so it
 
 ## Slides in the example
 
-Title, three dividers (`section-slide` with a big outlined number), bullets with build-up, text
-plus figure, an inline SVG block diagram built up step by step with moving dashes, equations
-(KaTeX), a results table with a highlighted row, key numbers, an audio demo with play buttons and
-a sweeping waveform cursor, a summary with a callout, and a closing slide.
+Title, three dividers (`section-slide` with a big outlined number), bullets with build-up, text plus figure, an inline SVG block diagram built up step by step with moving dashes, equations (KaTeX), a results table with a highlighted row, key numbers, an audio demo with play buttons and a sweeping waveform cursor, a summary with a callout, and a closing slide.
 
 ## Building blocks
 
@@ -47,15 +42,12 @@ a sweeping waveform cursor, a summary with a callout, and a closing slide.
 | `.refs` | reference line above the footer |
 | `class="fragment"` | build-up step; `data-fragment-index` sets the order |
 
-Keep new slide-level CSS rules scoped to `.reveal .slides section.slide`: Reveal.js copies slide
-classes onto a full-window background element, so unscoped rules paint outside the slide.
+Keep new slide-level CSS rules scoped to `.reveal .slides section.slide`: Reveal.js copies slide classes onto a full-window background element, so unscoped rules paint outside the slide.
 
 ## Math
 
-KaTeX with `\( ... \)` inline and `\[ ... \]` display. Shared macros are defined once in `deck.js`
-(`\vect`, `\norm`, `\E`, `\dd`).
+KaTeX with `\( ... \)` inline and `\[ ... \]` display. Shared macros are defined once in `deck.js` (`\vect`, `\norm`, `\E`, `\dd`).
 
 ## Licenses
 
-The template files are yours to use. Third-party software in `vendor/` keeps its own licenses;
-see `vendor/LICENSES.md`.
+The template files are yours to use. Third-party software in `vendor/` keeps its own licenses; see `vendor/LICENSES.md`.

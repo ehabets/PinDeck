@@ -1,7 +1,6 @@
 # Ocean for Quarto
 
-PinDeck's Ocean slide template as a Quarto format: the same look as `ocean-example/` (1280 × 720 canvas,
-wave artwork, kicker over the title, footer with slide number and logo), written in Quarto Markdown.
+PinDeck's Ocean slide template as a Quarto format: the same look as `ocean-example/` (1280 × 720 canvas, wave artwork, kicker over the title, footer with slide number and logo), written in Quarto Markdown.
 
 ```yaml
 ---
@@ -34,13 +33,9 @@ The body of a content slide sits between y = 168 and the footer rule (y = 652): 
 
 ## Classes (theme.css)
 
-Use Ocean's classes on divs and spans: `::: {.cols .wide-left}` with one `:::` div per column, Quarto's
-`::: {.callout-note}` (drawn as Ocean's callout), `[text]{.hl}`, `[Author 2024]{.cite}`, `.muted`,
-`::: {.stats}` / `.stat`, `table.results` (write the table in HTML), `svg.diagram`, `.demo` (audio demo).
-Lists are Ocean's bullets without a class.
+Use Ocean's classes on divs and spans: `::: {.cols .wide-left}` with one `:::` div per column, Quarto's `::: {.callout-note}` (drawn as Ocean's callout), `[text]{.hl}`, `[Author 2024]{.cite}`, `.muted`, `::: {.stats}` / `.stat`, `table.results` (write the table in HTML), `svg.diagram`, `.demo` (audio demo). Lists are Ocean's bullets without a class.
 
-Math is MathJax: `$...$` inline, `$$...$$` display; the shared macros `\vect`, `\norm`, `\E`, `\dd` are defined in
-`header.html`.
+Math is MathJax: `$...$` inline, `$$...$$` display; the shared macros `\vect`, `\norm`, `\E`, `\dd` are defined in `header.html`.
 
 ## Files
 

@@ -4,21 +4,9 @@
 
 ## Several decks
 
-Click the deck's name above the slide for the other decks: the `.html` files in the deck's folder and in
-the asset roots, and in their folders one level down (`lecture/index.html`). A deck opens in the same
-tab, or with ⌘-click in a new one, on the same port and login, so one SSH tunnel serves them all. Each keeps
-its own chat and undo history while it is open, and the assistant finishes a turn in a deck you leave. A
-file PinDeck cannot open is greyed out with the reason; listing a deck changes nothing, and only opening it
-adds its element ids. Symlinked decks and folders are listed too; a deck file that links to a deck in
-another folder is greyed out (open that deck itself). Started with a folder that has no `index.html`,
-PinDeck shows the list of its decks. A deck with no editor open for 30 minutes is closed (its undo history
-goes, as on a restart) and opens again when you choose it. Open as many decks in as many tabs as you like:
-the tabs of a browser share one connection for their live updates.
+Click the deck's name above the slide for the other decks: the `.html` files in the deck's folder and in the asset roots, and in their folders one level down (`lecture/index.html`). A deck opens in the same tab, or with ⌘-click in a new one, on the same port and login, so one SSH tunnel serves them all. Each keeps its own chat and undo history while it is open, and the assistant finishes a turn in a deck you leave. A file PinDeck cannot open is greyed out with the reason; listing a deck changes nothing, and only opening it adds its element ids. Symlinked decks and folders are listed too; a deck file that links to a deck in another folder is greyed out (open that deck itself). Started with a folder that has no `index.html`, PinDeck shows the list of its decks. A deck with no editor open for 30 minutes is closed (its undo history goes, as on a restart) and opens again when you choose it. Open as many decks in as many tabs as you like: the tabs of a browser share one connection for their live updates.
 
-A deck is open in one PinDeck at a time: started again for a deck that another PinDeck (another port, or
-`server.mjs` on its own) has open, PinDeck says where it is open and stops, so their chats and undo
-histories never overwrite each other. `pindeck login <deck>` and `cli.mjs` find the PinDeck that serves
-the deck, whichever port it runs on.
+A deck is open in one PinDeck at a time: started again for a deck that another PinDeck (another port, or `server.mjs` on its own) has open, PinDeck says where it is open and stops, so their chats and undo histories never overwrite each other. `pindeck login <deck>` and `cli.mjs` find the PinDeck that serves the deck, whichever port it runs on.
 
 ## Working with it
 
@@ -45,29 +33,13 @@ the deck, whichever port it runs on.
 | Comment for later | Write a note in the message box, pin one element (or none, for the whole slide) and press **Comment** instead of Send. The comment is kept, not sent: a blue marker `C1`, `C2`, … on the slide, and an entry in **Comments** (chat header). Click a marker to open its comment. See [Review comments](#review-comments). |
 | Check from a terminal | `node cli.mjs layout 3 --issues`, `slides`, `shot 3` or `pdf handout`, in the deck's folder (or with `--deck <folder or file.html>`): asks the PinDeck that serves the deck. |
 
-You can also edit `index.html` or `theme.css` in any editor; the slide reloads, and the assistant is told
-the files changed. CSS changes are swapped in without a reload. Typing in the slide is not lost meanwhile:
-when you finish, PinDeck refuses to save it over the other change and offers the text to copy.
+You can also edit `index.html` or `theme.css` in any editor; the slide reloads, and the assistant is told the files changed. CSS changes are swapped in without a reload. Typing in the slide is not lost meanwhile: when you finish, PinDeck refuses to save it over the other change and offers the text to copy.
 
 ## Review comments
 
-Review a deck first, change it later: comments are notes on slides and elements that wait, for you, for the
-assistant, or for a coding agent outside PinDeck (Claude Code in VS Code, say). Based on Sebastian J.
-Schlecht's review mode.
+Review a deck first, change it later: comments are notes on slides and elements that wait, for you, for the assistant, or for a coding agent outside PinDeck (Claude Code in VS Code, say). Based on Sebastian J. Schlecht's review mode.
 
-* **Kept outside the deck.** Comments are saved in `<deck folder>/.pindeck/<deck>.review.json`, never in the
-  slides. They are no part of Undo, and the assistant cannot edit them.
-* **Found again after changes.** Each comment remembers its slide (id attribute, title, position) and its
-  element (id, tag and text, math as TeX). After an edit it is found again by them; one whose element or slide
-  is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is
-  never attached to something else.
-* **The Comments panel** lists them with their slide; click one to go there. **Reply**, **Edit**, **Resolve** (or
-  **Reopen**) and **×** in each entry; **Edit** changes the text in place (`⌘↩` saves, `Esc` cancels). **Process Comments** puts all open comments into the message box as one request, to
-  read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it
-  did (shown in the list under **Show resolved**). One it could not do, or found unclear, it leaves open with a
-  reply on the comment saying why. **Reply** to answer it there, then **Process Comments** again: the
-  thread goes with the comment. **Reopen** a resolved one if you disagree.
-* **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's
-  anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck
-  change. The agent sets `"status": "resolved"` in the JSON file, or leaves the comment open and adds
-  `{ "by": "agent", "text": "…" }` to its `replies`; the editor follows.
+* **Kept outside the deck.** Comments are saved in `<deck folder>/.pindeck/<deck>.review.json`, never in the slides. They are no part of Undo, and the assistant cannot edit them.
+* **Found again after changes.** Each comment remembers its slide (id attribute, title, position) and its element (id, tag and text, math as TeX). After an edit it is found again by them; one whose element or slide is gone, or whose text changed (perhaps because the comment was addressed), turns grey and says why. It is never attached to something else.
+* **The Comments panel** lists them with their slide; click one to go there. **Reply**, **Edit**, **Resolve** (or **Reopen**) and **×** in each entry; **Edit** changes the text in place (`⌘↩` saves, `Esc` cancels). **Process Comments** puts all open comments into the message box as one request, to read over and send. The assistant marks each comment it has addressed as resolved, with a line on what it did (shown in the list under **Show resolved**). One it could not do, or found unclear, it leaves open with a reply on the comment saying why. **Reply** to answer it there, then **Process Comments** again: the thread goes with the comment. **Reopen** a resolved one if you disagree.
+* **For an agent outside PinDeck**, `.pindeck/<deck>.review.md` lists the open comments with each slide's anchor, element and (for a Quarto deck) source line. It is rewritten whenever the comments or the deck change. The agent sets `"status": "resolved"` in the JSON file, or leaves the comment open and adds `{ "by": "agent", "text": "…" }` to its `replies`; the editor follows.
