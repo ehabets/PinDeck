@@ -13,7 +13,7 @@ Open an issue with:
 * if a deck is involved: the smallest piece of `index.html` (and `theme.css`) that shows the problem;
 * for the PowerPoint import: a small `.pptx` with only the slide that goes wrong, if you can share it.
 
-Do not attach decks or slides you may not share. Chat history and backups in `~/.pindeck-v3/` (`~/.pindeck/` for v2) can contain your slides' text, so check before you attach anything from there.
+Do not attach decks or slides you may not share. Chat history and backups in `~/.pindeck-v4/` (`~/.pindeck-v3/` for v3, `~/.pindeck/` for v2) can contain your slides' text, so check before you attach anything from there.
 
 ## Suggesting a feature
 
@@ -32,7 +32,7 @@ There is nothing to install: PinDeck has no npm dependencies. You need macOS or 
 
 Useful while developing:
 
-* `PINDECK_HOME=/tmp/pindeck-dev` keeps chat history, backups and settings away from your own `~/.pindeck-v3`.
+* `PINDECK_HOME=/tmp/pindeck-dev` keeps chat history, backups and settings away from your own `~/.pindeck-v4`.
 * Work on a copy of a deck (`cp -R ocean-example /tmp/deck`) when you try things that change it.
 * `--port` runs a second PinDeck next to your usual one; `CLAUDE_BIN` and `CHROME_BIN` point to other binaries.
 
