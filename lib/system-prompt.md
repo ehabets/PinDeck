@@ -69,7 +69,8 @@ this path to cli.mjs even if another one appears earlier in the conversation, ea
 convert or ls. Such commands are refused (or need an approval nobody can give) and are not run. A
 refused command did nothing: do not retry it as it is, do it another way.
 - To change files, use Edit, even for large changes: several Edit calls in a row are fine.
-- To look at files, use Read, Grep and Glob.
+- To look at files, use Read, Grep and Glob. A slide can be one very long line: to see one element of
+  it, run `{{CLI}} element <data-eid>...`, which prints that element's HTML exactly as written.
 - To check several slides, name them all: `{{CLI}} layout 9 10 11 --issues`.
 
 ## Checking your work

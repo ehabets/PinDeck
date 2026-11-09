@@ -5,6 +5,7 @@
                                     (add --issues for the issues only: layout 9 10 11 --issues)
    node cli.mjs shot <slide>...     screenshots with pin markers; prints the PNG paths
    node cli.mjs slides              slide numbers and ids
+   node cli.mjs element <eid>...    the HTML of elements, by data-eid, as written in the deck
    node cli.mjs pdf handout         PDF with one page per slide (build steps in their final state)
    node cli.mjs pdf presentation    PDF with one page per build step
                                     (add "all" to include hidden slides: pdf handout all)
@@ -64,8 +65,8 @@ if (cmd === "git-setup") {
 }
 const issuesOnly = cmd === "layout" && rest.includes("--issues");
 const slides = rest.filter((a) => a !== "--issues");
-if (!["layout", "shot", "slides", "pdf", "pdf-figure", "resolve", "reply"].includes(cmd)) {
-  console.error("Usage: node cli.mjs layout|shot <slide>... [--issues]  |  node cli.mjs slides  |  node cli.mjs pdf handout|presentation  |  " +
+if (!["layout", "shot", "slides", "element", "pdf", "pdf-figure", "resolve", "reply"].includes(cmd)) {
+  console.error("Usage: node cli.mjs layout|shot <slide>... [--issues]  |  node cli.mjs slides  |  node cli.mjs element <eid>...  |  node cli.mjs pdf handout|presentation  |  " +
     "node cli.mjs resolve <comment> [what was done]  |  node cli.mjs reply <comment> <text>  |  " +
     "node cli.mjs pdf-figure <pdf> <page> [x,y,w,h] [figures/name.png] [--width px]  |  node cli.mjs git-setup [deck]");
   process.exit(2);
@@ -96,6 +97,7 @@ if (!url || !token) {
 const queries = cmd === "pdf-figure" ? [figureQuery([...rest])]
   : cmd === "pdf" ? [{ slide: rest[0] || "handout", ...(rest[1] === "all" ? { all: "1" } : {}) }]
   : cmd === "resolve" || cmd === "reply" ? [{ id: rest[0] || "", note: rest.slice(1).join(" ") }]
+  : cmd === "element" ? (rest.length ? rest : [""]).map((eid) => ({ eid }))
   : cmd === "slides" ? [{}] : (slides.length ? slides : ["current"]).map((slide) => ({ slide }));
 let ok = true;
 for (const q of queries) {

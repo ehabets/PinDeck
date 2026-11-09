@@ -353,6 +353,13 @@ test("Fronts side by side: login and cli.mjs find the PinDeck that serves the de
   const slides = run(CLI, ["slides"], fx.talks);
   assert.equal(slides.status, 0, slides.stderr);
   assert.match(slides.stdout, /^ 1  \S+/);
+  const firstEid = slides.stdout.match(/^ 1  (\S+)/)[1];
+  const element = run(CLI, ["element", firstEid], fx.talks);
+  assert.equal(element.status, 0, element.stderr);
+  assert.ok(element.stdout.startsWith("<section") && element.stdout.includes(`data-eid="${firstEid}"`), element.stdout);
+  const noElement = run(CLI, ["element", "no/such"], fx.talks);
+  assert.equal(noElement.status, 1);
+  assert.match(noElement.stderr, /No element "no\/such"/);
   const named = run(CLI, ["slides", "--deck", path.join(fx.talks, "second.html")]);
   assert.equal(named.status, 0, named.stderr);
   await waitFor(() => /\[second\.html\] opened/.test(a.output()), "the deck opened by the front");

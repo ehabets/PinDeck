@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse, findSlides, slideSelector, deckSize, parseSelector, assignEids, insertSlide, moveSlide, getNotes, setNotes } from "../lib/eids.mjs";
+import { parse, findSlides, slideSelector, deckSize, parseSelector, assignEids, insertSlide, moveSlide, getNotes, setNotes, getOuter } from "../lib/eids.mjs";
 import { detectFramework, unsupportedMessage } from "../lib/frameworks.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -14,6 +14,14 @@ const DECK = fs.readFileSync(path.join(ROOT, "test", "fixtures", "selector-deck.
 const page = (head, body) => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 const meta = (sel, size) => `<meta name="pindeck:slides" content="${sel}">` + (size ? `<meta name="pindeck:size" content="${size}">` : "");
 const eidsOf = (html) => findSlides(parse(html)).map((s) => s.attrs["data-eid"]?.value);
+
+test("getOuter: one element as written, however long its line; a nested tag of the same name, a void element, an unknown id", () => {
+  const html = `<div data-eid="a">x<div data-eid="a/b" class="c">one <b>two</b></div><img data-eid="a/i" src="y.png"><div>z</div></div>tail`;
+  assert.equal(getOuter(html, "a/b"), `<div data-eid="a/b" class="c">one <b>two</b></div>`);
+  assert.equal(getOuter(html, "a/i"), `<img data-eid="a/i" src="y.png">`);
+  assert.equal(getOuter(html, "a"), html.slice(0, -"tail".length));
+  assert.equal(getOuter(html, "nope"), null);
+});
 
 test("selectors: tags, #id, .class and [attr], joined by spaces or >, in a list; anything else is refused", () => {
   assert.equal(parseSelector("main.deck > section.slide").length, 1);

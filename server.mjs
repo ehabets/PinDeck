@@ -23,7 +23,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd, decode } from "./lib/eids.mjs";
+import { assignEids, parse, findSlides, slideSelector, deckSize, setStyles, getInner, getOuter, setInner, insertAfter, removeElement, deleteTarget, fileRefs, insertSlide, moveSlide, getNotes, setNotes, setAttr, elementEnd, decode } from "./lib/eids.mjs";
 import { unifiedDiff } from "./lib/diff.mjs";
 import { ClaudeSession } from "./lib/claude.mjs";
 import { CodexSession } from "./lib/codex.mjs";
@@ -698,7 +698,7 @@ const codexInstructions = () => systemPrompt.replace(/## Attached files[\s\S]*?#
 Figures and audio are already saved under figures/. Keep their paths and use the deck's existing figure/audio patterns. Do not rename or move attachments.
 Use pindeck_read for text files, images and PDF pages (supply page: 1, then further pages as needed).
 Use pindeck_edit for exact replacements in ${DECK_FILE}, theme.css and the deck's other files, and pindeck_write to create a new file in the deck folder. Never change brand.css.
-Use pindeck_command with separate command and args for layout, shot, slides, pdf, pdf-figure, resolve or reply.
+Use pindeck_command with separate command and args for layout, shot, slides, element (the HTML of data-eid ids), pdf, pdf-figure, resolve or reply.
 Do not use shell commands, native file edits, or other tools to bypass these restrictions.
 When context mentions Read, use pindeck_read. Read screenshots with pindeck_read.
 Read README.md and the deck instructions below for conventions. Use layout after every visual change.
@@ -730,7 +730,7 @@ function makeSession(choice) {
       "--setting-sources", "", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands",   // no settings files, no MCP servers or connectors
       "--permission-mode", "default", "--permission-prompt-tool", "stdio", "--tools", "Read,Glob,Grep,Edit,Write,Bash",
       "--allowedTools", ...readRules(), "Edit(./**)", "Write(./**)",
-      ...["layout", "shot", "slides", "pdf", "pdf-figure", "resolve", "reply"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
+      ...["layout", "shot", "slides", "element", "pdf", "pdf-figure", "resolve", "reply"].map(command => `Bash(${CLI_CMD} ${command}:*)`),
       "--disallowedTools", ...lockedPaths().flatMap((f) => [`Edit(./${f})`, `Write(./${f})`]),
       ...(choice.model ? ["--model", choice.model] : []), ...(choice.effort ? ["--effort", choice.effort] : [])],
   });
@@ -904,7 +904,7 @@ function toolSummary(name, input = {}) {
       // must show as the script, or a refused script looks like a refused layout check
       const cmd = String(input.command || "").trim();
       const m = cmd.startsWith(CLI_CMD + " ") && cmd.slice(CLI_CMD.length).match(/^\s+([\w-]+)\s*([^\n;&|<>`$]*)$/);
-      const names = { shot: "Screenshot", layout: "Check layout", "pdf-figure": "PDF figure", resolve: "Resolve comment", reply: "Reply to comment" };
+      const names = { shot: "Screenshot", layout: "Check layout", element: "Read element", "pdf-figure": "PDF figure", resolve: "Resolve comment", reply: "Reply to comment" };
       return m ? { name: names[m[1]] || m[1], detail: m[1] === "pdf-figure" ? m[2].trim().replace(/^\S*\//, "") : m[2].trim() }
                : { name: "Run", detail: cmd.split("\n")[0].slice(0, 80) };
     }
@@ -2168,6 +2168,11 @@ const server = http.createServer(async (req, res) => {
       const list = slideList(), why = !list.length && deckProblemNow();
       if (why) return text(res, 409, why);
       return text(res, 200, list.map((s) => `${String(s.index + 1).padStart(2)}  ${s.eid}`).join("\n"));
+    }
+    if (p === "/api/element") {
+      const eid = url.searchParams.get("eid") || "";
+      const outer = getOuter(readDeck(DECK_FILE) || "", eid);
+      return outer === null ? text(res, 404, `No element "${eid}" in ${DECK_FILE}. Give a data-eid.`) : text(res, 200, outer);
     }
     if (p === "/api/layout" || p === "/api/shot") {
       const slide = resolveSlide(url.searchParams.get("slide"));

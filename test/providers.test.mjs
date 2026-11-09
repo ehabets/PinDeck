@@ -222,6 +222,6 @@ test('Claude session grants only supported PinDeck helper commands', async () =>
  vm.runInContext(source.slice(source.indexOf('function makeSession(choice)'),source.indexOf('/* What each backend offers.')),ctx);
  const agent=vm.runInContext('makeSession({provider:"claude",model:"sonnet",effort:"low"})',ctx);
  const all=agent.args(),args=all.slice(all.indexOf('--allowedTools')+1,all.indexOf('--disallowedTools'));
- assert.deepEqual(Array.from(args.filter(a=>a.startsWith('Bash('))),['layout','shot','slides','pdf','pdf-figure','resolve','reply'].map(name=>`Bash(node /app/cli.mjs ${name}:*)`));
+ assert.deepEqual(Array.from(args.filter(a=>a.startsWith('Bash('))),['layout','shot','slides','element','pdf','pdf-figure','resolve','reply'].map(name=>`Bash(node /app/cli.mjs ${name}:*)`));
  assert(!args.includes('Bash(node /app/cli.mjs:*)'));
 });

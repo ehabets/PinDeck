@@ -24,7 +24,7 @@
 | `server.mjs` | The server for one deck: UI, deck files, events, backend session, undo, CLI endpoints. Behind the front, or on its own (`node server.mjs <deck>`). |
 | `lib/login.mjs`, `lib/deck-target.mjs`, `lib/deck-list.mjs` | Login links and cookies, which deck a path names (and its state folder), and the decks the menu lists. |
 | `lib/servers.mjs` | The PinDecks running for this user, and which one serves a deck (`pindeck login`, `cli.mjs`). |
-| `cli.mjs` | `layout`, `shot`, `slides`, `pdf handout` / `pdf presentation` and `pdf-figure` commands for the backends (and for you), and `git-setup`. |
+| `cli.mjs` | `layout`, `shot`, `slides`, `element`, `pdf handout` / `pdf presentation` and `pdf-figure` commands for the backends (and for you), and `git-setup`. |
 | `public/` | The editor page; `bridge.js`, which is injected into the deck in edit mode (never saved to it); `events-worker.js`, the event stream the tabs of a browser share. |
 | `lib/pptx.mjs`, `lib/zip.mjs`, `lib/xml.mjs` | Reading `.pptx` files (no dependencies): slides, text, shapes and their positions, notes. |
 | `lib/pptx-import.mjs` | Turns PowerPoint slides into slides of the deck: figures, tables, build steps, audio, layout, HTML in the deck's style. |

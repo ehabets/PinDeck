@@ -208,7 +208,7 @@ for (const platform of ["linux", "darwin"]) {
     assert.equal(a[a.indexOf("--setting-sources") + 1], "");
     assert.ok(a.includes("--strict-mcp-config"));
     const rel = path.relative(fx.deck, path.join(ROOT, "cli.mjs")).split(path.sep).join("/");
-    const commands = ["layout", "shot", "slides", "pdf", "pdf-figure", "resolve", "reply"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
+    const commands = ["layout", "shot", "slides", "element", "pdf", "pdf-figure", "resolve", "reply"].map((c) => `Bash(${cliCommand(rel)} ${c}:*)`);
     assert.ok(commands.every((c) => a.includes(c)), "the CLI permissions are the quoted command, one per PinDeck command");
     const allowed = a.slice(a.indexOf("--allowedTools") + 1, a.indexOf("--disallowedTools"));
     const reads = allowed.filter((r) => /^(Read|Glob|Grep)\(/.test(r));
