@@ -66,6 +66,12 @@ Codex integration uses OpenAI’s experimental `dynamicTools` extension to the a
 * [How it works](docs/how-it-works.md): the architecture, the files, and the current limitations.
 * [Changelog](CHANGELOG.md): what each version brought.
 
+## "Created by PinDeck" badge
+
+Made your slides with PinDeck? Feel free to put the badge on a closing slide. Its QR code links to this repository. Use the
+[light](docs/badge/created-by-pindeck-light.svg) or [dark](docs/badge/created-by-pindeck-dark.svg) SVG, or the
+[light](docs/badge/created-by-pindeck-light.png) or [dark](docs/badge/created-by-pindeck-dark.png) PNG. To keep the code easy to scan, show it at least 300 px wide.
+
 ## Contributing
 
 Bug reports, ideas, example decks and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a bug, set up PinDeck for development, test a change by hand, and what a pull request should contain. In short: no npm dependencies, deck files are edited only where they must change, both backends’ permissions stay narrow, and the README describes what users see.
