@@ -67,7 +67,8 @@
     .__sel i[data-h="ne"] { left:100%; top:0; cursor:nesw-resize; } .__sel i[data-h="e"] { left:100%; top:50%; cursor:ew-resize; }
     .__sel i[data-h="se"] { left:100%; top:100%; cursor:nwse-resize; } .__sel i[data-h="s"] { left:50%; top:100%; cursor:ns-resize; }
     .__sel i[data-h="sw"] { left:0; top:100%; cursor:nesw-resize; } .__sel i[data-h="w"] { left:0; top:50%; cursor:ew-resize; }
-    .__sel.readonly i { display:none; }
+    .__sel.readonly i, .__sel.multi i { display:none; }
+    html.__selmode ${SLIDE} .__selected.__member { outline:calc(1px*var(--pindeck-u,1)) dashed #1a73e8; outline-offset:0; }
     .__sel-label { position:absolute; left:calc(-1.5px*var(--pindeck-u,1)); white-space:nowrap; background:#1a73e8; color:#fff;
       font:600 calc(11px*var(--pindeck-u,1))/calc(17px*var(--pindeck-u,1)) system-ui, sans-serif; padding:0 calc(5px*var(--pindeck-u,1));
       border-radius:calc(3px*var(--pindeck-u,1)); font-variant-numeric:tabular-nums; }
@@ -389,8 +390,22 @@
   const fmtTranslate = (x, y) => (r1(x) || r1(y) ? `${r1(x)}px ${r1(y)}px` : "");
   const nameOf = (el, sec) => { const e = el.dataset.eid || ""; return e.startsWith(sec.dataset.eid + "/") ? e.slice(sec.dataset.eid.length) : e; };
 
+  /* The selection: one element, or several on the same slide (⌘-click adds and removes). `el` is the one
+     clicked last: it is what Enter edits and what the assistant gets first. Several move together and have no
+     resize handles. */
+  const many = () => sel.els.length > 1;
+  const groupName = () => many() ? `${sel.els.length} elements (${sel.els.map((e) => nameOf(e, sel.sec)).join(", ")})` : nameOf(sel.el, sel.sec);
+  function unionBox(els, sec) {
+    const bs = els.map((e) => boxOf(e, sec));
+    const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
+    return { x, y, w: Math.max(...bs.map((b) => b.x + b.w)) - x, h: Math.max(...bs.map((b) => b.y + b.h)) - y };
+  }
   function drawSel() {
-    if (!sel || !sel.el.isConnected) return removeSel();
+    if (sel) {
+      sel.els = sel.els.filter((e) => e.isConnected);
+      if (!sel.el.isConnected) sel.el = sel.els.at(-1);
+    }
+    if (!sel?.el) return removeSel();
     if (editing) return;
     if (!selBox) {
       selBox = document.createElement("div");
@@ -398,34 +413,46 @@
       selBox.innerHTML = '<span class="__sel-label"></span>' + HANDLES.map((h) => `<i data-h="${h}"></i>`).join("");
     }
     if (selBox.parentElement !== sel.sec) sel.sec.appendChild(selBox);
-    const b = boxOf(sel.el, sel.sec);
+    const b = many() ? unionBox(sel.els, sel.sec) : boxOf(sel.el, sel.sec);
+    selBox.classList.toggle("multi", many());
+    for (const e of sel.els) e.classList.toggle("__member", many());
     Object.assign(selBox.style, { left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
     selBox.classList.toggle("readonly", !editable);
     const lab = selBox.firstChild;
-    lab.textContent = `${nameOf(sel.el, sel.sec)}   ` + (drag?.kind === "move" ? `x ${b.x}  y ${b.y}` : `${b.w} × ${b.h}`);
+    lab.textContent = `${many() ? sel.els.length + " elements" : nameOf(sel.el, sel.sec)}   ` + (drag?.kind === "move" ? `x ${b.x}  y ${b.y}` : `${b.w} × ${b.h}`);
     lab.className = "__sel-label " + (b.y < 30 ? "below" : "above");
   }
-  function removeSel() { selBox?.remove(); document.querySelectorAll(".__selected").forEach((e) => e.classList.remove("__selected")); }
-  function select(el, sec, notify = true) {
+  function removeSel() { selBox?.remove(); document.querySelectorAll(".__selected").forEach((e) => e.classList.remove("__selected", "__member")); }
+  function select(el, sec, notify = true, els = el ? [el] : []) {
     removeSel();
-    sel = el ? { el, sec } : null;
-    if (sel) { sel.el.classList.add("__selected"); drawSel(); }
+    sel = el ? { el, sec, els } : null;
+    if (sel) { sel.els.forEach((e) => e.classList.add("__selected")); drawSel(); }
     if (notify) host()?.selectionChanged(sel ? selectionInfo() : null);
+  }
+  // ⌘-click: add an element to the selection, or take it out. An element and one inside it cannot move
+  // together (the inner one would move twice), so adding one drops the other.
+  function toggleSel(t) {
+    if (!sel || sel.sec !== t.sec) return select(t.el, t.sec);
+    const els = sel.els.includes(t.el) ? sel.els.filter((e) => e !== t.el)
+      : [...sel.els.filter((e) => !e.contains(t.el) && !t.el.contains(e)), t.el];
+    if (!els.length) return select(null, null);
+    select(els.includes(t.el) ? t.el : els.at(-1), t.sec, true, els);
   }
   function selectionInfo() {
     const { el, sec } = sel;
-    return { eid: el.dataset.eid, slide: slideInfo(sec), tag: tagOf(el), box: boxOf(el, sec), text: textOf(el).slice(0, 120) };
+    const info = (e) => ({ eid: e.dataset.eid, tag: tagOf(e), box: boxOf(e, sec) });
+    return { ...info(el), slide: slideInfo(sec), text: textOf(el).slice(0, 120),
+      ...(many() ? { also: sel.els.filter((e) => e !== el).map(info) } : {}) };
   }
-  function selectEid(eid) {
-    const el = eid && byEid(eid);
-    const sec = el?.closest(SLIDE_OF);
-    if (!el || sec !== deck.current()) return select(null, null);
-    select(el, sec);
+  function selectEid(eids) {
+    const els = [].concat(eids || []).map((eid) => byEid(eid)).filter((e) => e?.closest(SLIDE_OF) === deck.current());
+    if (!els.length) return select(null, null);
+    select(els[0], deck.current(), true, els);
   }
 
   function selectHover(e) {
     const t = selectableOf(e.target);
-    if (!t || (sel && t.el === sel.el)) return hideHover();
+    if (!t || sel?.els.includes(t.el)) return hideHover();
     if (!hoverBox) { hoverBox = document.createElement("div"); hoverBox.className = "__hover"; hoverBox.appendChild(document.createElement("span")); }
     const b = boxOf(t.el, t.sec);
     if (hoverBox.parentElement !== t.sec) t.sec.appendChild(hoverBox);
@@ -437,11 +464,11 @@
   }
 
   /* Snap targets: slide edges and centre, the footer rule, and the edges and centres of other elements */
-  function snapTargets(sec, el) {
+  function snapTargets(sec, skip) {
     const xs = [0, W / 2, W], ys = [0, H / 2, H];
     if (FOOTER_TOP != null && sec.querySelector(".slide-foot")) ys.push(FOOTER_TOP);
     for (const o of sec.querySelectorAll("[data-eid]")) {
-      if (o === el || el.contains(o) || o.contains(el)) continue;
+      if (skip.some((el) => o === el || el.contains(o) || o.contains(el))) continue;
       if (o.closest("svg") && o.tagName.toLowerCase() !== "svg") continue;
       if (!o.getClientRects().length) continue;
       const b = boxOf(o, sec);
@@ -482,30 +509,32 @@
     hideHover();
     // double click: edit the text under the pointer
     const now = performance.now();
-    const dbl = now - lastDown.t < 450 && Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < 6 && lastDown.el === e.target;
+    const dbl = !(e.metaKey || e.ctrlKey) && now - lastDown.t < 450 && Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < 6 && lastDown.el === e.target;
     lastDown = { t: dbl ? 0 : now, x: e.clientX, y: e.clientY, el: e.target };
     if (dbl && !e.target.closest?.(".__sel i")) return editAt(e.target, e.clientX, e.clientY);
     const handle = e.target.closest?.(".__sel i[data-h]");
     if (!handle) {
       if (e.target.closest?.(".__pin")) return;   // pin markers are removed in pin mode only
-      const t = selectableOf(e.target);
-      if (!t) return select(null, null);
+      const t = selectableOf(e.target), add = e.metaKey || e.ctrlKey;
+      if (!t) return add ? undefined : select(null, null);
       if (t.locked) {
-        select(null, null);
+        if (!add) select(null, null);   // a ⌘-click that misses keeps the group
         host()?.toast(`${t.el.classList.contains("slide-foot") ? "The footer is" : "This element is"} set by brand.css and locked.`);
         return;
       }
-      if (!sel || sel.el !== t.el) select(t.el, t.sec);
+      if (add) return toggleSel(t);
+      if (!sel?.els.includes(t.el)) select(t.el, t.sec);
     }
     if (!editable) { if (handle) host()?.toast(lockReason || "Claude is working. Moving and resizing resume when it has finished."); return; }
     const el = sel.el, cs = getComputedStyle(el);
     const { s } = frame(sel.sec);
     const [tx, ty] = translateOf(el);
+    const styles = (e) => ({ translate: e.style.translate, width: e.style.width, height: e.style.height, "max-width": e.style.maxWidth, "max-height": e.style.maxHeight });
     drag = {
       kind: handle ? "resize" : "move", handle: handle?.dataset.h, x0: e.clientX, y0: e.clientY, s, started: !!handle,
-      b: boxOf(el, sel.sec), tx, ty, cw: parseFloat(cs.width) || 0, ch: parseFloat(cs.height) || 0,
-      maxW: cs.maxWidth, maxH: cs.maxHeight, targets: snapTargets(sel.sec, el),
-      before: { translate: el.style.translate, width: el.style.width, height: el.style.height, "max-width": el.style.maxWidth, "max-height": el.style.maxHeight },
+      b: many() ? unionBox(sel.els, sel.sec) : boxOf(el, sel.sec), tx, ty, cw: parseFloat(cs.width) || 0, ch: parseFloat(cs.height) || 0,
+      maxW: cs.maxWidth, maxH: cs.maxHeight, targets: snapTargets(sel.sec, sel.els),
+      items: sel.els.map((e) => { const [x, y] = translateOf(e); return { el: e, tx: x, ty: y, before: styles(e) }; }),
     };
     document.documentElement.setPointerCapture?.(e.pointerId);
   }
@@ -530,8 +559,8 @@
         const sy = snapTo([b.y + dy, b.y + dy + b.h / 2, b.y + dy + b.h], targets.ys, tol);
         if (sy) { dy += sy.d; gy.push(sy.at); }
       }
-      el.style.translate = fmtTranslate(drag.tx + dx, drag.ty + dy);
-      drag.label = `Moved ${nameOf(el, sel.sec)} by ${r1(dx)}, ${r1(dy)} px`;
+      for (const it of drag.items) it.el.style.translate = fmtTranslate(it.tx + dx, it.ty + dy);
+      drag.label = `Moved ${groupName()} by ${r1(dx)}, ${r1(dy)} px`;
     } else {
       const h = drag.handle;
       let w = b.w, ht = b.h, ox = 0, oy = 0;   // ox/oy: how far the left/top edge moves
@@ -574,26 +603,30 @@
     clearGuides();
     if (!sel) return;
     drawSel();
-    if (d.started) commit(d.before, d.label);
+    if (d.started) commit(d.items, d.label);
   }
-  function commit(before, label) {
-    const el = sel.el, set = {};
-    const now = { translate: el.style.translate, width: el.style.width, height: el.style.height,
-      "max-width": el.style.maxWidth, "max-height": el.style.maxHeight };
-    for (const k of Object.keys(now)) if (now[k] !== before[k]) set[k] = now[k] || null;
-    if (Object.keys(set).length) host()?.commitEdit({ eid: el.dataset.eid, set }, label);
+  // one edit (one undo step) for all the elements that changed
+  function commit(items, label) {
+    const ops = items.flatMap(({ el, before }) => {
+      const set = {}, now = { translate: el.style.translate, width: el.style.width, height: el.style.height,
+        "max-width": el.style.maxWidth, "max-height": el.style.maxHeight };
+      for (const k of Object.keys(now)) if (now[k] !== before[k]) set[k] = now[k] || null;
+      return Object.keys(set).length ? [{ eid: el.dataset.eid, set }] : [];
+    });
+    if (ops.length) host()?.commitEdit(ops, label);
     host()?.selectionChanged(selectionInfo());
   }
   function nudge(dx, dy) {
     if (!sel) return;
     if (!editable) return host()?.toast(lockReason || "Claude is working. Moving and resizing resume when it has finished.");
-    const el = sel.el;
-    const [tx, ty] = translateOf(el);
-    el.style.translate = fmtTranslate(tx + dx, ty + dy);
+    const ops = sel.els.map((el) => {
+      const [tx, ty] = translateOf(el);
+      el.style.translate = fmtTranslate(tx + dx, ty + dy);
+      return { eid: el.dataset.eid, set: { translate: el.style.translate || null } };
+    });
     drawSel();
     renderPins(pins);
-    host()?.commitEdit({ eid: el.dataset.eid, set: { translate: el.style.translate || null } },
-      { nudge: true, name: nameOf(el, sel.sec), dx, dy });
+    host()?.commitEdit(ops, { nudge: true, name: groupName(), dx, dy });
     host()?.selectionChanged(selectionInfo());
   }
   function setMode(m) {
@@ -656,7 +689,7 @@
     const src = opts.src ?? await host()?.textSource(t.eid, t.path);
     if (src == null || !t.el.isConnected) return;
     const el = t.el;
-    if (!sel || sel.el !== el) select(el.dataset.eid ? el : null, t.sec);
+    if (!sel || sel.el !== el || many()) select(el.dataset.eid ? el : null, t.sec);   // text editing is one element at a time
     removeSel();
     hideHover();
     editing = { ...t, rendered: el.innerHTML };
@@ -786,7 +819,7 @@
     // a new bullet left empty is removed again
     if (ed.isNew && isBlank(el)) {
       el.remove();
-      if (sel?.el === el) select(null, null);
+      if (sel?.els.includes(el)) select(null, null);
       host()?.commitRemove(eid);
       chainDirty = false;
       return;
@@ -1146,7 +1179,7 @@
         const k = e.key, meta = e.metaKey || e.ctrlKey;
         if (sel && mode === "select" && !meta && (k === "Delete" || k === "Backspace")) {
           e.preventDefault(); e.stopImmediatePropagation();
-          host()?.requestDelete(sel.el.dataset.eid);
+          host()?.requestDelete(sel.els.map((e) => e.dataset.eid));
           return;
         }
         // arrows nudge the selection (Shift: 10 px) instead of changing slides

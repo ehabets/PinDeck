@@ -1541,6 +1541,43 @@ test("Deleting a picture keeps its file when another deck in the folder, or one 
   assert.ok(fs.existsSync(path.join(fx.deck, "figures/transmission_loss.svg")));
 });
 
+test("Several selected elements: moved in one edit, deleted together (one undo each), all named to the assistant", async (t) => {
+  const fx = fixture(t);
+  const s = await startServer(t, fx);
+  const file = path.join(fx.deck, "index.html");
+  const original = fs.readFileSync(file, "utf8");
+  const tagOf = (html, eid) => new RegExp(`<[^>]*data-eid="${eid}"[^>]*>`).exec(html)?.[0];
+  // a group move is one edit
+  const ops = ["title/event", "title/subtitle"].map((eid) => ({ eid, set: { translate: "10px 20px" } }));
+  assert.equal((await s.api("edit", { ops, label: "Moved 2 elements by 10, 20 px" })).status, 200);
+  const moved = fs.readFileSync(file, "utf8");
+  for (const { eid } of ops) assert.match(tagOf(moved, eid), /translate: ?10px 20px/);
+  assert.equal((await s.api("undo", {})).status, 200);
+  assert.equal(fs.readFileSync(file, "utf8"), original);
+  // deleting a box together with an element inside it removes the box once
+  const group = ["title/authors", "title/author-block", "title/event"];
+  const info = await s.api(`delete-info?${new URLSearchParams(group.map((e) => ["eid", e]))}`);
+  assert.deepEqual(info.data.targets.map((x) => x.eid), ["title/author-block", "title/event"]);
+  const del = await s.api("delete", { eids: group, files: [] });
+  assert.equal(del.status, 200);
+  assert.deepEqual(del.data.deleted, ["title/author-block", "title/event"]);
+  const after = fs.readFileSync(file, "utf8");
+  for (const eid of group) assert.equal(tagOf(after, eid), undefined, eid);
+  assert.ok(tagOf(after, "title/subtitle"));
+  assert.equal((await s.api("undo", {})).status, 200);
+  assert.equal(fs.readFileSync(file, "utf8"), original);
+  assert.equal((await s.api("delete-info?eid=title/event&eid=nope")).status, 404);
+  // the assistant gets every selected element
+  const box = { x: 1, y: 2, w: 3, h: 4 };
+  const selection = { eid: "title/event", tag: "div.event", box, slide: { index: 0, eid: "title" },
+    also: [{ eid: "title/subtitle", tag: "p.subtitle", box }] };
+  assert.equal((await s.api("message", { text: "align these", selection })).status, 200);
+  const told = (await waitFor(() => fakeLog(fx).find((e) => e.event === "input" && e.type === "user"), "the message")).text;
+  assert.match(told, /Selected elements \(what "these".*on slide 1:\n- title\/event \(div\.event\), box x=1 y=2 w=3 h=4\n- title\/subtitle \(p\.subtitle\)/);
+  await waitFor(async () => !(await s.api("status")).data.busy, "the turn");
+  assert.equal(chatOf(fx).find((e) => e.kind === "user").selection.label, "event +1");
+});
+
 /* ---- Watcher, live reload and reconnect ------------------------------------------------------- */
 function events(t, s) {
   const ctrl = new AbortController();

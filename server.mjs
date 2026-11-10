@@ -1091,8 +1091,10 @@ function buildPrompt({ text: userText, pins = [], selection, layouts = [], curre
     ctx.push(...notes.map((n) => "Note: " + n));
     state.notes = [];
   }
-  if (selection) ctx.push(`Selected element (what "this" or "it" most likely refers to): ${selection.eid} (${selection.tag}), ` +
-    `box x=${selection.box.x} y=${selection.box.y} w=${selection.box.w} h=${selection.box.h} on slide ${selection.slide.index + 1}.`);
+  const selBox = (s) => `${s.eid} (${s.tag}), box x=${s.box.x} y=${s.box.y} w=${s.box.w} h=${s.box.h}`;
+  if (selection?.also?.length) ctx.push(`Selected elements (what "these", "them" or "this" most likely refer to), on slide ${selection.slide.index + 1}:\n` +
+    [selection, ...selection.also].map((s) => "- " + selBox(s)).join("\n"));
+  else if (selection) ctx.push(`Selected element (what "this" or "it" most likely refers to): ${selBox(selection)} on slide ${selection.slide.index + 1}.`);
   if (pins.length) ctx.push("Pins (numbered clicks; the user refers to them by number):\n" + pins.map(formatPin).join("\n"));
   for (const L of layouts) ctx.push("Layout:\n" + formatLayout(L));
   if (screenshot) ctx.push(`Screenshot of slide ${screenshot.slide}${screenshot.pins ? " with the pin markers" : ""}: ${screenshot.path} (Read it).`);
@@ -1365,14 +1367,17 @@ function recordHandEdit(before, html, label, note, { manual = true, deletedFiles
 /* What deleting an element would remove, and which of its files nothing else uses. Files outside the
    deck folder, in vendor/, or still referenced elsewhere (the rest of the deck, theme.css, brand.css, or
    another deck in the folder or one folder down, which may share figures/) are never offered. */
-function deletePlan(eid) {
+/* What deleting one or more elements removes: the elements (a picture with its caption; an element inside another
+   one that goes too is left out) and the files they refer to */
+function deletePlan(eids) {
   const html = readDeck(DECK_FILE);
-  const target = deleteTarget(html, eid);
-  if (!target) return null;
-  const rest = removeElement(html, target.eid);
+  let targets = [].concat(eids).map((eid) => deleteTarget(html, eid));
+  if (!targets.length || targets.some((t) => !t)) return null;
+  targets = targets.filter((t, i) => !targets.some((o, j) => o.eid === t.eid ? j < i : o.outer.includes(`data-eid="${t.eid}"`)));
+  const rest = targets.reduce((h, t) => removeElement(h, t.eid), html);
   const css = (readDeck("theme.css") || "") + (readDeck("brand.css") || "");
   const others = otherDeckRefs();
-  const files = fileRefs(target.outer).flatMap((ref) => {
+  const files = [...new Set(targets.flatMap((t) => fileRefs(t.outer)))].flatMap((ref) => {
     const abs = path.resolve(DECK_DIR, ref);
     const rel = path.relative(DECK_DIR, abs).split(path.sep).join("/");
     if (rel.startsWith("..") || rel.startsWith("vendor/") || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return [];
@@ -1381,7 +1386,7 @@ function deletePlan(eid) {
     const usedElsewhere = fileRefs(rest).some((r) => path.resolve(DECK_DIR, r) === abs) || css.includes(ref) || css.includes(rel) || usedBy.length > 0;
     return [{ rel, bytes: fs.statSync(abs).size, usedElsewhere, usedBy }];
   });
-  return { ...target, html: rest, files };
+  return { ...targets[0], targets: targets.map(({ eid, tag }) => ({ eid, tag })), html: rest, files };
 }
 /* The other decks of this folder and one folder down, each with a test of whether it refers to a file: in its
    HTML (relative to its own folder), or in the stylesheets beside it */
@@ -1762,6 +1767,7 @@ const server = http.createServer(async (req, res) => {
       const placed = (x) => x && typeof x.eid === "string" && x.slide && Number.isInteger(x.slide.index) && x.box;
       b.pins = (Array.isArray(b.pins) ? b.pins : []).filter((p) => placed(p) && p.point && p.at);
       if (!placed(b.selection)) b.selection = null;
+      else b.selection.also = (Array.isArray(b.selection.also) ? b.selection.also : []).filter((x) => x && typeof x.eid === "string" && x.box);
       if (!Array.isArray(b.layouts)) b.layouts = [];
       if (b.current && !Number.isInteger(b.current.index)) b.current = null;
       const preparation = { cancelled: false, controller: new AbortController() };
@@ -1788,7 +1794,7 @@ const server = http.createServer(async (req, res) => {
         const entry = addEntry({ kind: "user", text: b.text,
           screenshot: screenshot && { file: path.basename(screenshot.path), slide: screenshot.slide },
           attachments: b.attachments.map((a) => ({ path: a.path, kind: a.kind, name: a.name })),
-          selection: b.selection ? { eid: b.selection.eid, label: b.selection.eid.replace(/^[^/]+\//, ""), slide: b.selection.slide.index + 1 } : null,
+          selection: b.selection ? { eid: b.selection.eid, label: b.selection.eid.replace(/^[^/]+\//, "") + (b.selection.also.length ? ` +${b.selection.also.length}` : ""), slide: b.selection.slide.index + 1 } : null,
           pins: (b.pins || []).map((p) => ({ n: p.n, eid: p.eid, label: label(p), slide: p.slide.index + 1 })) });
         if (shotFailed) addEntry({ kind: "notice", text: `Screenshot of slide ${shotFailed.slide} failed: ${shotFailed.error}` });
         startTurn(buildPrompt({ ...b, screenshot, shotFailed }), entry);
@@ -2039,27 +2045,27 @@ const server = http.createServer(async (req, res) => {
 
     // Delete an element (and, if the user agrees, the files only it uses)
     if (p === "/api/delete-info") {
-      const plan = deletePlan(url.searchParams.get("eid"));
+      const plan = deletePlan(url.searchParams.getAll("eid"));
       if (!plan) return json(res, 404, { error: "Element not found in the file." });
-      return json(res, 200, { eid: plan.eid, tag: plan.tag, files: plan.files });
+      return json(res, 200, { eid: plan.eid, tag: plan.tag, targets: plan.targets, files: plan.files });
     }
     if (p === "/api/delete" && req.method === "POST") {
       if (state.busy) return json(res, 409, { error: "The assistant is working. Wait until it has finished." });
       const b = await body(req);
       if (staleEdit(res, b)) return;
-      const plan = deletePlan(b.eid);
+      const plan = deletePlan(Array.isArray(b.eids) ? b.eids : b.eid);
       if (!plan) return json(res, 404, { error: "Element not found in the file." });
       const before = snapshot(EDITABLE);
       const wanted = new Set(b.files || []);
       const deletedFiles = plan.files.filter((f) => wanted.has(f.rel) && !f.usedElsewhere)
         .map((f) => ({ rel: f.rel, data: fs.readFileSync(path.join(DECK_DIR, f.rel)) }));
-      const short = plan.eid.replace(/^[^/]+\//, "/");
+      const short = plan.targets.map((t) => t.eid.replace(/^[^/]+\//, "/")).join(", ");
       const label = `Deleted ${short}` + (deletedFiles.length ? ` and ${deletedFiles.map((f) => f.rel).join(", ")}` : "");
       const turnId = recordHandEdit(before, plan.html, label,
-        `The user deleted ${plan.eid} (${plan.tag}) by hand` + (deletedFiles.length ? `, together with the file(s) ${deletedFiles.map((f) => f.rel).join(", ")}` : "") + ".",
+        `The user deleted ${plan.targets.map((t) => `${t.eid} (${t.tag})`).join(", ")} by hand` + (deletedFiles.length ? `, together with the file(s) ${deletedFiles.map((f) => f.rel).join(", ")}` : "") + ".",
         { manual: false, deletedFiles });
       for (const f of deletedFiles) removeDeckFile(f.rel);
-      return json(res, 200, { turnId, deleted: plan.eid, files: deletedFiles.map((f) => f.rel) });
+      return json(res, 200, { turnId, deleted: plan.targets.map((t) => t.eid), files: deletedFiles.map((f) => f.rel) });
     }
 
     // Hand edits from the editor: drag/resize (inline styles) and text

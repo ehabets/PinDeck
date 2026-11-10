@@ -125,7 +125,7 @@ const editorHost = {
     applyEditable(bridge);
     refreshPinsFromSlides();
     bridge.renderPins(allPins());
-    if (state.sel) bridge.selectEid(state.sel.eid);
+    if (state.sel) bridge.selectEid([state.sel.eid, ...(state.sel.also || []).map((a) => a.eid)]);
     if (state.pendingTitleEdit) { state.pendingTitleEdit = false; setTimeout(() => bridge.editTitle(), 50); }
     renderSlides();
     renderToolbar();
@@ -215,7 +215,7 @@ function queueEdit(fn, failMsg = "Could not save the change.") {
 }
 function postEdit(op, label) {
   return queueEdit(async () => {
-    const res = await api("edit", { ops: [op], label });
+    const res = await api("edit", { ops: [].concat(op), label });
     if (!res.ok) {
       toast((await res.json().catch(() => ({}))).error || "Could not save the change.");
       loadMain();   // show the file as it is
@@ -231,8 +231,9 @@ function flushNudge() {
 }
 function commitEdit(op, label) {
   if (label?.nudge) {   // arrow keys: one change per burst of key presses
-    if (nudgeAcc && nudgeAcc.op.eid !== op.eid) flushNudge();
-    nudgeAcc ??= { name: label.name, dx: 0, dy: 0 };
+    const key = [].concat(op).map((o) => o.eid).join(" ");   // a group nudge is one op per element
+    if (nudgeAcc && nudgeAcc.key !== key) flushNudge();
+    nudgeAcc ??= { key, name: label.name, dx: 0, dy: 0 };
     nudgeAcc.dx += label.dx; nudgeAcc.dy += label.dy; nudgeAcc.op = op;
     clearTimeout(nudgeTimer);
     nudgeTimer = setTimeout(flushNudge, 600);
@@ -658,8 +659,8 @@ function shortEid(p) {
 function renderPinTray() {
   const sel = state.sel;
   $("pin-tray").innerHTML = (sel ? `
-    <span class="chip sel" data-sel title="Selected: ${esc(sel.eid)}. The assistant sees it as “this”.">
-      <span class="n">▢</span> S${sel.slide.index + 1} · ${esc(sel.eid.replace(/^[^/]+\//, ""))} <span class="dim">${sel.box.w} × ${sel.box.h}</span>
+    <span class="chip sel" data-sel title="Selected: ${esc([sel, ...(sel.also || [])].map((s) => s.eid).join(", "))}. The assistant sees ${sel.also?.length ? "them as “these”" : "it as “this”"}.">
+      <span class="n">▢</span> S${sel.slide.index + 1} · ${esc(sel.eid.replace(/^[^/]+\//, ""))}${sel.also?.length ? ` +${sel.also.length}` : ""} <span class="dim">${sel.box.w} × ${sel.box.h}</span>
       <button class="x" data-unsel aria-label="Deselect">×</button></span>` : "") + state.pins.map((p) => `
     <span class="chip" data-n="${p.n}" title="${esc(p.eid)}${p.text ? " — " + esc(p.text.slice(0, 80)) : ""}">
       <span class="n">${p.n}</span> S${p.slide.index + 1} · ${esc(shortEid(p))}${p.word ? ` “${esc(p.word)}”` : ""}
@@ -1048,7 +1049,7 @@ function handleKey(k, mod = {}) {
     if (!(state.sel && state.mode === "select" && main)) $("input").focus();
     else main.bridge.editSelection().then((editing) => { if (!editing) $("input").focus(); });
   }
-  else if ((k === "Delete" || k === "Backspace") && state.sel && state.mode === "select") requestDelete(state.sel.eid);
+  else if ((k === "Delete" || k === "Backspace") && state.sel && state.mode === "select") requestDelete([state.sel.eid, ...(state.sel.also || []).map((a) => a.eid)]);
   else if (k.startsWith("Arrow") && state.sel && state.mode === "select") {
     const step = mod.shift ? 10 : 1;
     main?.bridge.nudge(k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, k === "ArrowUp" ? -step : k === "ArrowDown" ? step : 0);
@@ -1408,22 +1409,24 @@ $("provider-switch").addEventListener("close", async () => {
    with it (ticked by default). Undo brings back the element and the files. */
 let deleting = false;
 async function requestDelete(eid) {
-  if (deleting || !eid) return;
+  const eids = [].concat(eid || []);
+  if (deleting || !eids.length) return;
   if (quartoWhy()) return toast(quartoWhy());
   if (state.busy) return toast("The assistant is working. Wait until it has finished.");
   deleting = true;
   try {
     flushNudge();
     await editChain;
-    const res = await api(`delete-info?${new URLSearchParams({ eid })}`);
+    const res = await api(`delete-info?${new URLSearchParams(eids.map((e) => ["eid", e]))}`);
     const info = await res.json().catch(() => ({}));
     if (!res.ok) return toast(info.error || "Cannot delete this element.");
-    const name = info.eid.replace(/^[^/]+\//, "/");
+    const many = info.targets.length > 1;
+    const name = info.targets.map((t) => t.eid.replace(/^[^/]+\//, "/")).join(", ");
     const slide = state.slides.findIndex((s) => info.eid === s.eid || info.eid.startsWith(s.eid + "/"));
-    const isFig = info.tag.startsWith("figure") && info.eid !== eid;
-    $("delete-title").textContent = isFig ? "Delete this figure?" : `Delete ${name}?`;
-    $("delete-what").textContent = `${isFig ? `The picture and its caption (${name})` : info.tag}` +
-      (slide >= 0 ? ` on slide ${slide + 1}` : "") + " will be removed from the slide.";
+    const isFig = !many && info.tag.startsWith("figure") && info.eid !== eids[0];
+    $("delete-title").textContent = many ? `Delete ${info.targets.length} elements?` : isFig ? "Delete this figure?" : `Delete ${name}?`;
+    $("delete-what").textContent = `${many ? `${name}` : isFig ? `The picture and its caption (${name})` : info.tag}` +
+      (slide >= 0 ? ` on slide ${slide + 1}` : "") + ` will be removed from the slide.`;
     $("delete-files").innerHTML = info.files.map((f, i) => f.usedElsewhere
       ? `<div class="file kept"><span>📄</span><span><code>${esc(f.rel)}</code>
            <span class="why">${f.usedBy?.length ? `Also used by ${esc(f.usedBy.join(", "))}` : "Still used elsewhere in the deck"}, so it is kept.</span></span></div>`
@@ -1438,7 +1441,7 @@ async function requestDelete(eid) {
     });
     if (choice !== "delete") return;
     const files = [...$("delete-files").querySelectorAll("input[data-file]:checked")].map((c) => c.dataset.file);
-    const r2 = await api("delete", { eid, files });
+    const r2 = await api("delete", { eids, files });
     const d2 = await r2.json().catch(() => ({}));
     if (!r2.ok) return toast(d2.error || "Could not delete the element.");
     main?.bridge.deselect();

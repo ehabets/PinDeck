@@ -15,6 +15,7 @@ What each PinDeck version brought, newest first. Releases are on [GitHub](https:
   - More Quarto examples: `quarto-katex-example/` (math with KaTeX) and `quarto-python-example/` (figures from Python).
   - The message box is taller and can be resized like the notes: drag its top edge, double-click for the default size.
   - The documentation is split out of the README into `docs/`, with this changelog.
+  - `⌘`-click selects several elements on a slide: they move and nudge together (one undo step), `Delete` removes them after one confirmation, and the assistant gets all of them as "these".
   - Settings and chats are kept in `~/.pindeck-v4`, apart from PinDeck 3's `~/.pindeck-v3`, so the beta runs next to 3.x; nothing is copied over (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 * **3.4.0**: formatted speaker notes, and the speaker view works.
