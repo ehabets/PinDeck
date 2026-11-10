@@ -1575,7 +1575,8 @@ test("Several selected elements: moved in one edit, deleted together (one undo e
   const told = (await waitFor(() => fakeLog(fx).find((e) => e.event === "input" && e.type === "user"), "the message")).text;
   assert.match(told, /Selected elements \(what "these".*on slide 1:\n- title\/event \(div\.event\), box x=1 y=2 w=3 h=4\n- title\/subtitle \(p\.subtitle\)/);
   await waitFor(async () => !(await s.api("status")).data.busy, "the turn");
-  assert.equal(chatOf(fx).find((e) => e.kind === "user").selection.label, "event +1");
+  const user = await waitFor(() => chatOf(fx).find((e) => e.kind === "user"), "the saved message");
+  assert.equal(user.selection.label, "event +1");
 });
 
 /* ---- Watcher, live reload and reconnect ------------------------------------------------------- */
