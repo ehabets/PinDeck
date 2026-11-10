@@ -3,6 +3,12 @@
 What each PinDeck version brought, newest first. Releases are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 
+* **4.1.0-beta.1**: select several elements at once.
+  - `⌘`-click selects several elements on a slide: they move and nudge together (one undo step), `Delete` removes them after one confirmation, and the assistant gets all of them as "these".
+  - `cli.mjs element <eid>...` prints elements' HTML as written in the deck, so the assistant can read one element of a long slide line.
+  - The PinDeck version shows beside the logo.
+  - A "Created by PinDeck" badge with a QR code for a closing slide, in light and dark (see the README).
+
 * **4.0.0-beta.1**: review comments, and Quarto decks.
   - **Comment** keeps a note on a pinned element or a slide for later, outside the deck. Comments are found again after changes or flagged, listed in the Comments panel, sent to the assistant as one request, and written as a review packet for an agent outside PinDeck. After Sebastian J. Schlecht's review mode.
   - `pindeck talk.qmd` opens a Quarto deck: the assistant edits the source, PinDeck renders after every change, and hand edits of the output are off. An example deck in `quarto-mathjax-example/`.
@@ -15,7 +21,6 @@ What each PinDeck version brought, newest first. Releases are on [GitHub](https:
   - More Quarto examples: `quarto-katex-example/` (math with KaTeX) and `quarto-python-example/` (figures from Python).
   - The message box is taller and can be resized like the notes: drag its top edge, double-click for the default size.
   - The documentation is split out of the README into `docs/`, with this changelog.
-  - `⌘`-click selects several elements on a slide: they move and nudge together (one undo step), `Delete` removes them after one confirmation, and the assistant gets all of them as "these".
   - Settings and chats are kept in `~/.pindeck-v4`, apart from PinDeck 3's `~/.pindeck-v3`, so the beta runs next to 3.x; nothing is copied over (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 * **3.4.0**: formatted speaker notes, and the speaker view works.

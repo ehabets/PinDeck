@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 4 beta preview** (`4.0.0-beta.1`). The beta is on npm’s `beta` channel and the [`v4-beta`](https://github.com/ehabets/PinDeck/tree/v4-beta) branch; the stable release is 3.4.0 (`npx pindeck`, on [`main`](https://github.com/ehabets/PinDeck)). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. The beta keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
+> **macOS and Linux · Version 4 beta preview** (`4.1.0-beta.1`). The beta is on npm’s `beta` channel and the [`v4-beta`](https://github.com/ehabets/PinDeck/tree/v4-beta) branch; the stable release is 3.4.0 (`npx pindeck`, on [`main`](https://github.com/ehabets/PinDeck)). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. The beta keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 **Pin it. Say it. Done.** PinDeck is a local editor for HTML slide decks (reveal.js): the slides on the left, the slide in the middle, and a chat with Claude Code or OpenAI Codex on the right. You click elements to pin them, write what to change, and the selected assistant edits the HTML and CSS. The slide updates in place.
 
@@ -26,7 +26,7 @@ Install the beta from npm:
 ```bash
 npx pindeck@beta /path/to/deck
 # Or select this exact beta:
-npx pindeck@4.0.0-beta.1 /path/to/deck
+npx pindeck@4.1.0-beta.1 /path/to/deck
 ```
 
 Or run it from the `v4-beta` branch, which includes the example decks:
