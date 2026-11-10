@@ -5,7 +5,7 @@ name: Test
 
 on:
   push:
-    branches: [main, "2.x", "linux-*", "v3*", "v4*"]   # 2.x: fixes for PinDeck 2; v3*, v4*: the beta branches
+    branches: [main, "*.x", "linux-*", "v*-beta"]   # *.x: fixes for an older major version; v*-beta: the beta branches
   pull_request:
 
 permissions:

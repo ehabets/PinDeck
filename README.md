@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 4 beta preview** (`4.1.0-beta.1`). The beta is on npm’s `beta` channel and the [`v4-beta`](https://github.com/ehabets/PinDeck/tree/v4-beta) branch; the stable release is 3.4.0 (`npx pindeck`, on [`main`](https://github.com/ehabets/PinDeck)). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. The beta keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
+> **macOS and Linux · Version 4** (`4.1.0`). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. Coming from PinDeck 3: version 4 keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 **Pin it. Say it. Done.** PinDeck is a local editor for HTML slide decks (reveal.js): the slides on the left, the slide in the middle, and a chat with Claude Code or OpenAI Codex on the right. You click elements to pin them, write what to change, and the selected assistant edits the HTML and CSS. The slide updates in place.
 
@@ -21,23 +21,21 @@
 
 Runs on macOS and Linux. The npm package declares `"os": ["darwin", "linux"]`, so normal npm installation rejects other operating systems. Overriding that check does not make those platforms supported. Running the server from a cloned repository on another OS shows a local support notice instead of opening the deck or starting a backend.
 
-Install the beta from npm:
+Install from npm:
 
 ```bash
-npx pindeck@beta /path/to/deck
-# Or select this exact beta:
-npx pindeck@4.1.0-beta.1 /path/to/deck
+npx pindeck /path/to/deck
 ```
 
-Or run it from the `v4-beta` branch, which includes the example decks:
+Or run it from source, which includes the example decks:
 
 ```bash
-git clone -b v4-beta https://github.com/ehabets/PinDeck.git
+git clone https://github.com/ehabets/PinDeck.git
 cd PinDeck
 node front.mjs ocean-example
 ```
 
-PinDeck 2 stays available as `npx pindeck@2 /path/to/deck` (source: the [`2.x`](https://github.com/ehabets/PinDeck/tree/2.x) branch). Releases, with notes for each version, are on [GitHub](https://github.com/ehabets/PinDeck/releases).
+PinDeck 3 and 2 stay available as `npx pindeck@3 /path/to/deck` and `npx pindeck@2 /path/to/deck` (source: the tags [`v3.4.0`](https://github.com/ehabets/PinDeck/tree/v3.4.0) and [`v2.11.0`](https://github.com/ehabets/PinDeck/tree/v2.11.0)). Releases, with notes for each version, are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 Then open the login link PinDeck prints (`PinDeck: http://127.0.0.1:5180/login?code=...`). It works once and logs this browser in; for a new one, run `pindeck login` (or `node front.mjs login`). On a Mac, pressing Enter in the terminal where PinDeck runs opens a new link in your default browser.
 
@@ -47,7 +45,7 @@ The deck is an `.html` file (`pindeck path/to/talk.html`) or a folder, which ope
 
 * **Runtime:** Node.js 20 or later, plus a modern browser. The release workflow uses Node.js 24.
 * **Backends:** install and sign in to Claude Code (`claude auth login`) or OpenAI Codex (`codex login`). The corresponding executable must be on `PATH`; `CLAUDE_BIN` and `CODEX_BIN` can override its path. Only the selected backend is required for editing. Model and effort availability comes from that backend and account, and may differ from the provider’s website or desktop app.
-* **Platforms:** macOS and Linux (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. The npm package declares `"os": ["darwin", "linux"]`, so normal npm installation rejects other operating systems. This check can be overridden; bypassing it does not make those platforms supported. Source launches on unsupported platforms show a local support page without opening the deck or starting a backend. Native Windows support is a possible v4 feature, not part of version 3.
+* **Platforms:** macOS and Linux (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. The npm package declares `"os": ["darwin", "linux"]`, so normal npm installation rejects other operating systems. This check can be overridden; bypassing it does not make those platforms supported. Source launches on unsupported platforms show a local support page without opening the deck or starting a backend. Native Windows support is not part of version 4.
 * **Screenshots and PDF export:** require Chrome, Chromium, Edge or Brave where the server runs.
 * **PDF input through Codex:** pages are rendered with macOS PDFKit, or Poppler on Linux. Page-text extraction uses `osascript` and is macOS-only; on Linux Codex reads the rendered page image. Claude uses its native PDF-reading capabilities.
 * **PowerPoint import:** basic `.pptx` parsing uses Node.js; rendered slide pictures require PowerPoint or Keynote on macOS, or LibreOffice and Poppler on Linux.

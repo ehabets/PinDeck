@@ -3,6 +3,14 @@
 What each PinDeck version brought, newest first. Releases are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 
+* **4.1.0**: PinDeck 4, the first stable release of version 4: everything from the 4.0 and 4.1 betas below. Compared with 3.4:
+  - **Comment** keeps review notes on pinned elements or slides, outside the deck; the assistant works through them with **Process Comments**, replies to what it cannot do and resolves the rest, or they go to an outside agent as a review packet.
+  - Quarto decks: `pindeck talk.qmd` lets the assistant edit the source and renders after every change, with Ocean as a Quarto format and three example decks.
+  - `⌘`-click selects several elements on a slide, to move, nudge or delete them together.
+  - A "Created by PinDeck" badge with a QR code for a closing slide; the PinDeck version shows beside the logo.
+  - The documentation is in `docs/`, with this changelog.
+  - Settings and chats are kept in `~/.pindeck-v4`, apart from PinDeck 3's `~/.pindeck-v3`; nothing is copied over (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)). PinDeck 3 stays on npm as `pindeck@3`.
+
 * **4.1.0-beta.1**: select several elements at once.
   - `⌘`-click selects several elements on a slide: they move and nudge together (one undo step), `Delete` removes them after one confirmation, and the assistant gets all of them as "these".
   - `cli.mjs element <eid>...` prints elements' HTML as written in the deck, so the assistant can read one element of a long slide line.
