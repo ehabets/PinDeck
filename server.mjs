@@ -51,6 +51,7 @@ import { indexDeck, commentFromPin, locate, loadReview, saveReview, packet, requ
    prints the links; this server tells it its address over IPC. */
 const FRONT = !!process.env.PINDECK_FRONT && !!process.send;
 const EDITOR_DIR = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(fs.readFileSync(path.join(EDITOR_DIR, "package.json"), "utf8")).version;
 const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) { console.log(USAGE); process.exit(0); }
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 ? argv.splice(i, 2)[1] : dflt; };
@@ -1648,7 +1649,7 @@ const server = http.createServer(async (req, res) => {
     const ok = authed(req);
     if (req.method === "GET" && (p === "/" || p === "/index.html")) {
       if (!ok) { res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); return res.end(LOGIN_PAGE); }
-      return serveFile(res, path.join(EDITOR_DIR, "public/index.html"), null, req);
+      return serveFile(res, path.join(EDITOR_DIR, "public/index.html"), (s) => s.replace("{{VERSION}}", VERSION), req);
     }
     if (req.method === "GET" && p.startsWith("/editor/")) {
       const f = safeJoin(path.join(EDITOR_DIR, "public"), p.slice(8));
