@@ -82,10 +82,11 @@ stages the version on npm. It goes live once a maintainer approves it with 2FA, 
 
 ### Beta releases
 
-Work towards a new major version stays on a branch of its own (for version 3 it was `v3-beta`) while `main`
-remains stable; fixes for PinDeck 2 go on the `2.x` branch. Public betas use versions such as
-`3.0.0-beta.1`, with an annotated Git tag `v3.0.0-beta.1`. Increment the final number for each beta.
-Create a GitHub prerelease with known limitations and installation instructions.
+Work towards a new major version stays on a branch of its own (for version 4 it is `v4-beta`) while `main`
+remains stable. Once a new major version reaches `main`, fixes for the previous one, if any are needed, go
+on an `N.x` branch created from its last release tag (for example `git push origin v3.4.0:refs/heads/3.x`).
+Public betas use versions such as `3.0.0-beta.1`, with an annotated Git tag `v3.0.0-beta.1`. Increment the
+final number for each beta. Create a GitHub prerelease with known limitations and installation instructions.
 
 The staging workflow explicitly selects `beta` for prerelease versions (those containing `-`) and
 `latest` for stable versions. Approval publishes to the channel chosen when staging; it does not
