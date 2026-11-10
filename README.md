@@ -1,6 +1,6 @@
 # PinDeck
 
-> **macOS and Linux · Version 4** (`4.1.0`). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. Coming from PinDeck 3: version 4 keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
+> **macOS and Linux · Version 4** (`4.2.0`). On Linux, PinDeck runs as a headless server that you use from your Mac's browser through an SSH tunnel (see [Running on a Linux server](docs/linux-server.md#running-on-a-linux-server)). Windows is not supported. Coming from PinDeck 3: version 4 keeps its settings and chats in `~/.pindeck-v4`, apart from 3.x (`~/.pindeck-v3`) and 2.x (`~/.pindeck`) (see [Models, providers and configuration](docs/configuration.md#models-providers-and-configuration)).
 
 **Pin it. Say it. Done.** PinDeck is a local editor for HTML slide decks (reveal.js): the slides on the left, the slide in the middle, and a chat with Claude Code or OpenAI Codex on the right. You click elements to pin them, write what to change, and the selected assistant edits the HTML and CSS. The slide updates in place.
 
@@ -15,6 +15,7 @@
 * **Stay on brand.** `brand.css` is locked: the assistant edits the deck, its styles and other files of the deck folder, never `brand.css` or `vendor/`, and checks its own work with PinDeck's layout command.
 * **Bring material in.** Attach figures, audio and PDFs to a message, or import slides from PowerPoint into the deck's own layouts.
 * **Get it out.** Present from the browser, or export a handout or presentation PDF.
+* **Posters, too.** A poster is a deck with one slide: `ocean-poster-example/` has an A0 portrait and an A0 landscape poster to start from (see [Posters](docs/preparing-decks.md#posters)).
 * **Local and small.** One Node process on 127.0.0.1, no npm dependencies, your existing Claude Code or Codex login.
 
 ## Quick start
@@ -58,7 +59,7 @@ Codex integration uses OpenAI’s experimental `dynamicTools` extension to the a
 ## Documentation
 
 * [Using PinDeck](docs/using.md): several decks, every action in the editor, review comments.
-* [Preparing decks](docs/preparing-decks.md): getting a deck ready, your own template, Quarto decks, PowerPoint import.
+* [Preparing decks](docs/preparing-decks.md): getting a deck ready, posters, your own template, Quarto decks, PowerPoint import.
 * [Configuration](docs/configuration.md): models and providers, backend permissions and attachments, keeping the ids out of git.
 * [Running on a Linux server](docs/linux-server.md): the headless server and the SSH tunnel.
 * [How it works](docs/how-it-works.md): the architecture, the files, and the current limitations.

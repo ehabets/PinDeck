@@ -45,6 +45,14 @@ test("the meta tag names the slides: child and descendant steps, attributes, and
   assert.equal(findSlides(parse(fs.readFileSync(path.join(ROOT, "ocean-example", "index.html"), "utf8"))).length, 13);
 });
 
+test("the poster examples are one slide each, at A0", () => {
+  for (const [file, size] of [["portrait.html", { width: 3179, height: 4494 }], ["landscape.html", { width: 4494, height: 3179 }]]) {
+    const tree = parse(fs.readFileSync(path.join(ROOT, "ocean-poster-example", file), "utf8"));
+    assert.equal(findSlides(tree).length, 1, file);
+    assert.deepEqual(deckSize(tree), size, file);
+  }
+});
+
 test("slide size and selector from the meta tags", () => {
   const t = parse(DECK);
   assert.equal(slideSelector(t), "main.deck > section.slide");

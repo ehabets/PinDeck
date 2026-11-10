@@ -3,6 +3,10 @@
 What each PinDeck version brought, newest first. Releases are on [GitHub](https://github.com/ehabets/PinDeck/releases).
 
 
+* **4.2.0**: posters, and zoom in the editor.
+  - A poster is a deck with one slide. `ocean-poster-example/` has two in the Ocean look, A0 portrait with two columns and A0 landscape with three; the exported PDF is one A0 page (see [Posters](docs/preparing-decks.md#posters)).
+  - Zoom: buttons appear in the bottom right corner of the slide area to zoom in and out, fill the width or height, and go back to the whole slide. A zoomed slide scrolls; the zoom is remembered per deck.
+
 * **4.1.0**: PinDeck 4, the first stable release of version 4: everything from the 4.0 and 4.1 betas below. Compared with 3.4:
   - **Comment** keeps review notes on pinned elements or slides, outside the deck; the assistant works through them with **Process Comments**, replies to what it cannot do and resolves the rest, or they go to an outside agent as a review packet.
   - Quarto decks: `pindeck talk.qmd` lets the assistant edit the source and renders after every change, with Ocean as a Quarto format and three example decks.

@@ -1,0 +1,178 @@
+/* ==========================================================================
+   Poster theme: type, layout and components.
+   Canvas: A0 at 96 px per inch, so 1 px is 0.75 pt on paper.
+     portrait   3179 x 4494 px (841 x 1189 mm), two columns
+     landscape  4494 x 3179 px, three columns
+   Edit the variables in :root to restyle the poster. The fixed identity (palette,
+   header, block colours, footer, logos) lives in brand.css, loaded after this file.
+   ========================================================================== */
+
+@font-face { font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("vendor/fonts/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-style: normal; font-display: swap;
+  src: url("vendor/fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-style: normal; font-display: swap;
+  src: url("vendor/fonts/inter-latin-700-normal.woff2") format("woff2"); }
+
+:root {
+  --ink:       #0E1B2C;   /* body text                                  */
+  --slate:     #5B6B7F;   /* secondary text                             */
+  --line:      #DCE6EF;   /* hairlines, table rules                     */
+  --shell:     #EEF5FA;   /* quiet backgrounds                          */
+  --paper:     #FFFFFF;
+  --letterbox: #04152B;   /* around the poster on screen                */
+
+  --font: "Inter", "Segoe UI", Arial, Helvetica, sans-serif;
+  --fs-title:   124px;    /* poster title: 93 pt                        */
+  --fs-authors: 54px;
+  --fs-block:   58px;     /* block headings                             */
+  --fs-body:    44px;     /* 33 pt                                      */
+  --fs-small:   36px;
+  --fs-note:    28px;     /* references, captions                       */
+
+  --m:   100px;           /* poster margin                              */
+  --gap: 64px;            /* between columns and between blocks         */
+  --pad: 44px;            /* inside a block                             */
+}
+
+/* ---- Poster ------------------------------------------------------------------ */
+html, body { margin: 0; background: var(--letterbox); }
+.poster {
+  position: relative; box-sizing: border-box; overflow: hidden;
+  width: 3179px; height: 4494px;
+  display: flex; flex-direction: column;
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font); font-size: var(--fs-body); line-height: 1.36;
+  -webkit-font-smoothing: antialiased;
+}
+.poster.landscape { width: 4494px; height: 3179px; }
+/* On screen the poster is scaled to the window (--fit is set by poster.js); print and PinDeck use 1. */
+@media screen { .poster { zoom: var(--fit, 1); margin: 0 auto; } }
+
+.poster strong, .poster b { font-weight: 700; }
+.poster a { color: var(--accent); text-decoration: none; }
+.poster figure { margin: 0; }
+.poster p { margin: 0 0 .5em; }
+.poster p:last-child { margin-bottom: 0; }
+
+/* ---- Columns and blocks --------------------------------------------------------
+   .poster-body holds one .col per column; a column is a stack of .block sections.
+   .block.grow takes the free height of its column, so the columns end level. */
+.poster-body { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap); padding: var(--gap) var(--m); }
+.poster.landscape .poster-body { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.col { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
+.poster-body { counter-reset: block; }
+.block { display: flex; flex-direction: column; }
+.block.grow { flex: 1; }
+.poster.portrait #take-home { box-sizing: border-box; min-height: 794px; }   /* same height as Processing Chain, so both tops align */
+/* The first block of every column has at least this height, so the titles of the second
+   blocks start at the same y across columns (change it if your first blocks are taller). */
+.poster { --first-block-h: 777px; }
+.col > .block:first-child { box-sizing: border-box; min-height: var(--first-block-h); }
+.block > h2 { margin: 0; padding: 20px var(--pad); font-size: var(--fs-block); line-height: 1.2; font-weight: 700; }
+.block > h2::before { counter-increment: block; content: counter(block) ". "; }   /* blocks number themselves */
+.block-body { flex: 1; padding: var(--pad); display: flex; flex-direction: column; gap: 36px; }
+.block-body.even { justify-content: space-evenly; }   /* spreads the free height of a grown block */
+.block h3 { margin: 0 0 -12px; font-size: var(--fs-body); line-height: 1.25; font-weight: 700; }
+
+/* ---- Bullets --------------------------------------------------------------------- */
+.bullets { list-style: none; padding: 0; margin: 0; }
+.bullets > li { position: relative; padding-left: 52px; margin: 0 0 .45em; }
+.bullets > li:last-child { margin-bottom: 0; }
+.bullets > li::before { content: ""; position: absolute; left: 4px; top: .47em;
+  width: 18px; height: 18px; border-radius: 50%; background: var(--accent); }
+.bullets ul { list-style: none; padding: 0; margin: .3em 0 0; }
+.bullets ul > li { position: relative; padding-left: 44px; margin: 0 0 .25em; font-size: .88em; }
+.bullets ul > li::before { content: ""; position: absolute; left: 4px; top: .5em;
+  width: 11px; height: 11px; border-radius: 50%; border: 3px solid var(--accent-2); }
+.cite { color: var(--accent-2-ink); font-size: .8em; white-space: nowrap; }
+.muted { color: var(--slate); }
+.hl { color: var(--accent); font-weight: 700; }
+.small { font-size: var(--fs-small); }
+
+/* ---- Layout helpers inside a block ------------------------------------------------ */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+.cols.wide-left  { grid-template-columns: 1.4fr 1fr; }
+.cols.wide-right { grid-template-columns: 1fr 1.4fr; }
+.cols.top { align-items: start; }
+
+figure.fig { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+figure.fig img, figure.fig svg { display: block; max-width: 100%; height: auto; }
+figure.fig figcaption { font-size: var(--fs-note); line-height: 1.35; color: var(--slate); text-align: center; }
+
+.callout { background: var(--tint); border-left: 8px solid var(--accent); border-radius: 0 18px 18px 0;
+  padding: 26px 36px; font-size: var(--fs-small); line-height: 1.45; }
+.callout strong { color: var(--accent); }
+
+/* ---- Results table (booktabs) ------------------------------------------------------
+   Heavy rules at top and bottom, a light rule under the header, no rules between body rows.
+   Text left, numbers right. Row classes: .ours/.best (accent), .focus (tinted band), .muted
+   (grey), .group (space above a new group). */
+table.results { position: relative; z-index: 0; width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: var(--fs-small); font-variant-numeric: tabular-nums;
+  border-top: 4px solid var(--rule); border-bottom: 4px solid var(--rule); }
+table.results caption { caption-side: top; text-align: left; font-size: var(--fs-note); color: var(--slate); padding-bottom: 14px; }
+table.results th, table.results td { padding: 9px 18px; text-align: right; white-space: nowrap; }
+table.results thead tr:first-child th:first-child, table.results tbody td:first-child,
+table.results th.l, table.results td.l { text-align: left; }
+table.results thead th { font-weight: 600; color: var(--rule); vertical-align: bottom; padding-top: 14px; }
+table.results thead tr:last-child th, table.results thead th[rowspan] { border-bottom: 2px solid var(--rule); padding-bottom: 12px; }
+table.results thead th[colspan] { text-align: center;
+  background: linear-gradient(var(--rule), var(--rule)) center bottom / calc(100% - 24px) 2px no-repeat; }
+table.results tbody tr:first-child td { padding-top: 14px; }
+table.results tbody tr:last-child td  { padding-bottom: 14px; }
+table.results tbody tr.group td { border-top: 14px solid transparent; }
+table.results tr.ours td, table.results tr.best td { color: var(--accent); font-weight: 700; }
+table.results td.top { font-weight: 700; }
+/* Tints: one rectangle per row under the cells; cell backgrounds would meet at hairline seams in PDF viewers. */
+table.results tr.ours, table.results tr.focus { position: relative; }
+table.results tr.ours > td:first-child::before, table.results tr.focus > td:first-child::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--tint); }
+table.results tr.group > td:first-child::before { top: 14px; }
+table.results :is(tr.ours, tr.focus) + :is(tr.ours, tr.focus):not(.group) > td:first-child::before { top: -1px; }
+table.results tr.muted td { color: var(--slate); }
+table.results tbody td.grp { color: var(--ink); font-weight: 400; }
+table.results.compact { font-size: 32px; }
+table.results.compact th, table.results.compact td { padding: 5px 12px; }
+
+/* ---- Equations (KaTeX) ---------------------------------------------------------------- */
+.katex { font-size: 1.06em; }
+.eq-list { display: flex; flex-direction: column; gap: 26px; }
+.eq-item { padding-left: 28px; border-left: 5px solid var(--tint-line); }
+.eq-item .eq-label { font-size: var(--fs-small); font-weight: 600; color: var(--accent-2-ink); margin-bottom: 2px; }
+.eq-item .katex-display { margin: .2em 0; text-align: left; }
+.eq-item .katex-display > .katex { text-align: left; }
+.where { margin: 0; font-size: var(--fs-small); line-height: 1.5; }
+.where dt { float: left; clear: left; width: 2.6em; color: var(--accent); font-weight: 700; }
+.where dd { margin: 0 0 .25em 2.8em; }
+
+/* ---- Key numbers ---------------------------------------------------------------------- */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); align-items: start; }
+.stat { padding: 0 36px; border-left: 2px solid var(--line); }
+.stat:first-child { padding-left: 0; border-left: 0; }
+.stat .num { font-size: 130px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; color: var(--accent); }
+.stat .num small { font-size: .42em; margin-left: 6px; letter-spacing: 0; }
+.stat .what { margin-top: 16px; font-size: var(--fs-small); line-height: 1.3; font-weight: 700; }
+.stat .vs   { margin-top: 8px; font-size: var(--fs-note); line-height: 1.4; color: var(--slate); }
+
+/* ---- Block diagrams (inline SVG) ------------------------------------------------------- */
+svg.diagram { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font); }
+svg.diagram .box     { fill: var(--paper); stroke: #9FB4C8; stroke-width: 2.5; }
+svg.diagram .box.key { fill: var(--tint); stroke: var(--accent); }
+svg.diagram .box.out { fill: var(--rule); stroke: var(--rule); }
+svg.diagram .lbl     { font-size: 20px; fill: var(--ink); text-anchor: middle; }
+svg.diagram .lbl.sm  { font-size: 16px; }
+svg.diagram .lbl.inv { fill: #fff; }
+svg.diagram .lbl.b   { font-weight: 700; }
+svg.diagram .lbl.head{ font-weight: 700; font-size: 14px; letter-spacing: .14em; fill: var(--accent-2-ink); }
+svg.diagram .lbl.grey{ fill: var(--slate); }
+svg.diagram .wire    { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+svg.diagram .wire.arrow { marker-end: url(#arrowhead); }
+svg.diagram .zone    { fill: var(--shell); }
+#arrowhead path { fill: var(--accent); }
+
+/* ---- Footer: references on the left, contact and logos on the right ------------------- */
+.poster-foot { display: flex; align-items: flex-end; gap: var(--gap); padding: 0 var(--m) 80px; }
+.refs { flex: 1; margin: 0; padding: 0; list-style: none; font-size: var(--fs-note); line-height: 1.4; color: var(--slate); }
+.refs li { margin: 0 0 .2em; }

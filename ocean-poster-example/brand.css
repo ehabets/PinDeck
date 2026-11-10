@@ -1,0 +1,70 @@
+/* ==========================================================================
+   OCEAN BRAND LAYER for posters. The fixed identity.
+   Replace the values here with your organisation's colours and logo, then keep
+   this file stable: theme.css holds everything that may be restyled per poster.
+   PinDeck treats this file as locked (the assistant cannot edit it).
+     - the ocean palette and the roles theme.css uses (accent, tint, rule)
+     - the header: deep-ocean gradient with waves, logo position
+     - the look of the blocks
+     - the footer rule and logo
+   ========================================================================== */
+
+:root {
+  /* Palette (as in the Ocean slide template) */
+  --abyss:    #04152B;
+  --deep:     #0A2A4F;
+  --ocean:    #0B63B5;
+  --lagoon:   #19B3C9;
+  --teal-ink: #0B7F93;
+  --foam:     #E8F4FB;
+  --spray:    #7FE3F0;
+  --mist:     #BFD9EE;
+
+  /* Roles used by theme.css */
+  --accent:       var(--ocean);     /* bullets, highlights, key numbers  */
+  --accent-2:     var(--lagoon);    /* second-level bullets              */
+  --accent-2-ink: var(--teal-ink);  /* labels readable on white          */
+  --tint:         var(--foam);      /* callouts, highlighted rows        */
+  --tint-line:    #CFE6F5;
+  --rule:         var(--deep);      /* table rules, dark diagram boxes   */
+}
+
+/* ---- Header: deep-ocean gradient with waves ------------------------------------ */
+.poster-head {
+  position: relative; padding: 90px var(--m) 200px; color: #fff;
+  background:
+    radial-gradient(2200px 1100px at 88% 0%, rgba(25,179,201,.30), transparent 65%),
+    linear-gradient(165deg, var(--abyss) 0%, var(--deep) 48%, #0B4F8F 100%);
+}
+.poster-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 190px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 190' preserveAspectRatio='none'%3E%3Cpath d='M0 70 C160 30 320 110 480 72 S800 30 960 70 S1180 110 1280 64 V190 H0Z' fill='%2319B3C9' fill-opacity='.18'/%3E%3Cpath d='M0 110 C200 70 360 150 560 112 S900 70 1080 112 S1220 140 1280 104 V190 H0Z' fill='%230B63B5' fill-opacity='.45'/%3E%3Cpath d='M0 150 C240 118 420 182 640 150 S1020 118 1280 146 V190 H0Z' fill='%2304152B' fill-opacity='.55'/%3E%3C/svg%3E") no-repeat 0 100% / 100% 100%;
+}
+.poster-head .logo  { display: block; width: 400px; height: 120px; }
+.poster-head .event { position: absolute; right: var(--m); top: 104px; font-size: 38px; line-height: 1.35;
+  color: var(--mist); letter-spacing: .04em; text-align: right; }
+.poster-head h1 { margin: 64px 0 0; font-size: var(--fs-title); line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; }
+.poster-head .subtitle { margin: 22px 0 0; font-size: 60px; line-height: 1.3; color: var(--spray); }
+.poster-head .author-block { margin-top: 48px; padding-left: 32px; border-left: 6px solid var(--lagoon); }
+.poster-head .authors { font-size: var(--fs-authors); line-height: 1.35; }
+.poster-head .institute { margin-top: 6px; font-size: 40px; color: var(--mist); }
+
+/* Landscape: logo and event share the right edge, so the header stays low */
+.poster.landscape .poster-head { padding-top: 80px; }
+.poster.landscape .poster-head .logo  { position: absolute; right: var(--m); top: 80px; }
+.poster.landscape .poster-head .event { top: 228px; }
+.poster.landscape .poster-head h1 { margin-top: 0; max-width: calc(100% - 760px); }
+
+/* ---- Blocks: gradient heading on a framed card ----------------------------------- */
+.block { border: 3px solid #C5D9EA; border-radius: 28px; overflow: hidden; background: var(--paper); }
+.block > h2 { color: #fff; background: linear-gradient(90deg, var(--deep), var(--ocean) 60%, var(--lagoon)); }
+.block.alt > h2 { background: linear-gradient(90deg, #075E6E, var(--teal-ink) 55%, var(--lagoon)); }
+.block.tint .block-body { background: var(--foam); }
+
+/* ---- Footer: rule, contact, logo --------------------------------------------------- */
+.poster-foot { position: relative; padding-top: 44px; }
+.poster-foot::before { content: ""; position: absolute; left: var(--m); right: var(--m); top: 0; height: 5px;
+  background: linear-gradient(90deg, var(--deep), var(--ocean) 55%, var(--lagoon)); }
+.poster-foot .contact { font-size: var(--fs-note); line-height: 1.45; color: var(--slate); text-align: right; }
+.poster-foot .contact strong { color: var(--deep); }
+.poster-foot .logo { display: block; width: 300px; height: 90px; }

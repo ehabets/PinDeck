@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Title of Your Poster | Ocean poster template (A0 portrait, two columns)</title>
+  <!-- PinDeck: the poster is one "slide" of this size (A0 at 96 px per inch); the logos belong to the locked brand layer -->
+  <meta name="pindeck:slides" content="main.poster">
+  <meta name="pindeck:size" content="3179x4494">
+  <meta name="pindeck:locked" content=".logo">
+  <style>@page { size: 841mm 1189mm; margin: 0; }</style>   <!-- printing from the browser gives A0 too -->
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="brand.css">   <!-- fixed identity, keep last -->
+</head>
+<body>
+
+<!-- Shared SVG marker (arrowhead) for the block diagrams -->
+<svg class="svg-defs" width="0" height="0" aria-hidden="true" style="position:absolute">
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+</svg>
+
+<main class="poster portrait">
+
+  <!-- ==================================================================
+       HEADER: replace every placeholder
+       ================================================================== -->
+  <header class="poster-head">
+    <img class="logo" src="assets/logo-placeholder-light.svg" alt="Your logo">
+    <div class="event">Conference Name 2026<br>City, Country · Month Day</div>
+    <h1>Title of Your Poster Goes Here</h1>
+    <p class="subtitle">A one-line subtitle that says what visitors will learn</p>
+    <div class="author-block">
+      <div class="authors"><strong>First Author</strong>, Second Author and Third Author</div>
+      <div class="institute">Institute Name · Department · City, Country</div>
+    </div>
+  </header>
+
+  <!-- ==================================================================
+       BODY: one .col per column, each a stack of blocks. The blocks number
+       themselves in reading order; "grow" lets a block take the free height
+       of its column, so the columns end level.
+       ================================================================== -->
+  <div class="poster-body">
+    <div class="col">
+      <section class="block" id="motivation">
+        <h2>Motivation</h2>
+        <div class="block-body">
+          <ul class="bullets">
+            <li><strong>Light fades</strong> within tens of metres, <strong>sound travels</strong> for kilometres</li>
+            <li><strong>Passive acoustic monitoring</strong> observes marine life without disturbing it
+              <ul>
+                <li>Whales, dolphins and fish choruses, day and night</li>
+                <li>Long-term recorders on buoys, gliders and the sea floor</li>
+              </ul>
+            </li>
+            <li><strong>Human noise is rising:</strong> shipping, offshore construction, sonar <span class="cite">[1]</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="block grow" id="background">
+        <h2>Range Depends on Frequency</h2>
+        <div class="block-body">
+          <ul class="bullets">
+            <li>Sound speed in sea water \(c \approx 1500\) m/s, about <span class="hl">4.4×</span> faster than in air</li>
+            <li>Loss grows with range: spreading plus absorption
+              \[ \mathrm{TL}(r) = 20\log_{10}\frac{r}{1\,\mathrm{m}} + \alpha(f)\, r \]
+            </li>
+            <li>High frequencies fade fast: 50 kHz is gone after a few kilometres</li>
+          </ul>
+          <!-- Figures are best as SVG: they stay sharp at poster size -->
+          <figure class="fig">
+            <img src="figures/transmission_loss.svg" alt="Transmission loss over range for 1, 10 and 50 kHz" style="width:83%">
+            <figcaption>Spherical spreading plus absorption (illustrative values)</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="block alt" id="processing-chain">
+        <h2>Processing Chain</h2>
+        <div class="block-body">
+          <svg class="diagram" viewBox="0 0 900 220" role="img"
+               aria-label="Block diagram: a hydrophone array feeds a beamformer, then feature extraction, then a call detector that writes detected events.">
+            <text class="lbl head" x="65" y="16">SENSING</text>
+            <text class="lbl head" x="340" y="16">PROCESSING</text>
+            <text class="lbl head" x="720" y="16">DECISION</text>
+            <rect class="zone" x="0" y="34" width="130" height="180" rx="16"/>
+            <line class="wire" x1="34" y1="62" x2="34" y2="186" style="stroke:#9FB4C8"/>
+            <circle cx="34" cy="76"  r="10" fill="#0B63B5"/>
+            <circle cx="34" cy="108" r="10" fill="#0B63B5"/>
+            <circle cx="34" cy="140" r="10" fill="#0B63B5"/>
+            <circle cx="34" cy="172" r="10" fill="#0B63B5"/>
+            <text class="lbl sm" x="88" y="116">Hydro-</text>
+            <text class="lbl sm" x="88" y="136">phones</text>
+            <text class="lbl sm grey" x="88" y="160">M = 4</text>
+
+            <path class="wire arrow" d="M130 124 H164"/>
+            <rect class="box key" x="172" y="78" width="156" height="92" rx="14"/>
+            <text class="lbl b" x="250" y="120">Beamforming</text>
+            <text class="lbl sm grey" x="250" y="146">delay and sum</text>
+
+            <path class="wire arrow" d="M328 124 H362"/>
+            <rect class="box" x="370" y="78" width="156" height="92" rx="14"/>
+            <text class="lbl b" x="448" y="120">Features</text>
+            <text class="lbl sm grey" x="448" y="146">mel spectrogram</text>
+
+            <path class="wire arrow" d="M526 124 H560"/>
+            <rect class="box key" x="568" y="78" width="156" height="92" rx="14"/>
+            <text class="lbl b" x="646" y="120">Call detector</text>
+            <text class="lbl sm grey" x="646" y="146">small CNN</text>
+
+            <path class="wire arrow" d="M724 124 H758"/>
+            <rect class="box out" x="766" y="78" width="134" height="92" rx="14"/>
+            <text class="lbl b inv" x="833" y="120">Events</text>
+            <text class="lbl sm inv" x="833" y="146" style="opacity:.8">time, bearing</text>
+          </svg>
+          <ul class="bullets">
+            <li><strong>Beamforming</strong> raises the signal-to-noise ratio before any learning happens</li>
+            <li><strong>Detector</strong> is small enough to run in real time on a buoy</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="block alt grow" id="signal-model">
+        <h2>Signal Model</h2>
+        <div class="block-body even">
+          <div class="eq-list">
+            <div class="eq-item">
+              <div class="eq-label">Acoustic wave equation</div>
+              <div class="eq">\[ \nabla^2 p - \frac{1}{c^2}\,\frac{\partial^2 p}{\partial t^2} = 0 \]</div>
+            </div>
+            <div class="eq-item">
+              <div class="eq-label">Delay-and-sum beamformer</div>
+              <div class="eq">\[ y(t) = \frac{1}{M}\sum_{m=1}^{M} x_m\big(t - \tau_m(\theta)\big), \quad \tau_m(\theta) = \frac{d_m \cos\theta}{c} \]</div>
+            </div>
+            <div class="eq-item">
+              <div class="eq-label">Array gain in uncorrelated noise</div>
+              <div class="eq">\[ \mathrm{AG} = 10 \log_{10} M \ \text{dB} \]</div>
+            </div>
+          </div>
+          <dl class="where">
+            <dt>\(p\)</dt><dd>acoustic pressure</dd>
+            <dt>\(c\)</dt><dd>sound speed, about 1500 m/s</dd>
+            <dt>\(x_m\)</dt><dd>signal at hydrophone \(m\)</dd>
+            <dt>\(d_m\)</dt><dd>position of hydrophone \(m\)</dd>
+            <dt>\(\theta\)</dt><dd>bearing of the source</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="block grow" id="results">
+        <h2>Call Detection</h2>
+        <div class="block-body even">
+          <table class="results">
+            <caption>Detection on the example data set (placeholder numbers)</caption>
+            <thead>
+              <tr><th>Method</th><th>Sensors</th><th>Precision</th><th>Recall</th><th>F1</th><th>Latency</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Energy detector</td><td>1</td><td>0.62</td><td>0.71</td><td>0.66</td><td>5 ms</td></tr>
+              <tr><td>CNN, single channel</td><td>1</td><td>0.84</td><td>0.80</td><td>0.82</td><td>35 ms</td></tr>
+              <tr class="ours"><td>Beamforming + CNN (ours)</td><td>4</td><td>0.93</td><td>0.89</td><td>0.91</td><td>40 ms</td></tr>
+            </tbody>
+          </table>
+          <div class="stats">
+            <div class="stat">
+              <div class="num">+6<small>dB</small></div>
+              <div class="what">signal-to-noise ratio</div>
+              <div class="vs">from four hydrophones instead of one</div>
+            </div>
+            <div class="stat">
+              <div class="num">0.91</div>
+              <div class="what">F1 score</div>
+              <div class="vs">against 0.82 for a single channel</div>
+            </div>
+            <div class="stat">
+              <div class="num">40<small>ms</small></div>
+              <div class="what">latency</div>
+              <div class="vs">real time on a low-power buoy computer</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block tint" id="take-home">
+        <h2>Take-Home Messages</h2>
+        <div class="block-body">
+          <ul class="bullets">
+            <li>Sound is the best way to observe the ocean over long distances</li>
+            <li>A small hydrophone array adds about 6 dB before any learning</li>
+            <li>Beamforming plus a compact detector runs in real time on a buoy</li>
+          </ul>
+          <div class="callout"><strong>Next step:</strong> one sentence on what comes next, or the question you want visitors to remember.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ==================================================================
+       FOOTER: references, contact, logo
+       ================================================================== -->
+  <footer class="poster-foot">
+    <ol class="refs">
+      <li>[1] A. Author, B. Author, "Title of the referenced paper," <em>Journal Name</em>, vol. 1, pp. 1–10, 2025.</li>
+      <li>[2] C. Author, "Title of another referenced paper," in <em>Proc. Conference Name</em>, 2024.</li>
+    </ol>
+    <div class="contact"><strong>First Author</strong> · first.author@institute.org<br>www.institute.org/your-project</div>
+    <img class="logo" src="assets/logo-placeholder-dark.svg" alt="">
+  </footer>
+
+</main>
+
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/auto-render.min.js"></script>
+<script src="poster.js"></script>
+</body>
+</html>

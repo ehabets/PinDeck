@@ -146,7 +146,7 @@
   }
   function info() {
     // hash: the slide's address in the deck opened on its own (Present), where hidden slides are left out
-    return { slides: slides().map((s, i) => ({ ...slideInfo(s, i), hash: deck.hash(i) })), current: indexOf(deck.current()) };
+    return { slides: slides().map((s, i) => ({ ...slideInfo(s, i), hash: deck.hash(i) })), current: indexOf(deck.current()), width: W, height: H };
   }
 
   /* ---- Layout measurement ------------------------------------------------------------- */

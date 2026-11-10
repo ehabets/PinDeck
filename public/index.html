@@ -65,7 +65,16 @@
       </div>
     </div>
     <div id="pin-hint" class="pin-hint" hidden>Pin mode: click elements on the slide. Click a marker to remove it. <kbd>Esc</kbd> to stop.</div>
-    <div id="stage" class="stage"><div id="toast" class="toast" role="status" hidden></div></div>
+    <div id="stage" class="stage">
+      <div id="stage-view" class="stage-view"></div>
+      <div id="toast" class="toast" role="status" hidden></div>
+      <div id="zoom" class="zoom" role="group" aria-label="Zoom">
+        <button id="zoom-out" class="icon" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="zoom-fit" title="Show the whole slide" aria-label="Zoom: show the whole slide">100%</button>
+        <button id="zoom-in" class="icon" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zoom-fill" class="icon" title="Fill the width or height, and scroll the rest" aria-label="Fill the width or height">⤢</button>
+      </div>
+    </div>
     <section id="notes-panel" class="notes-panel" aria-label="Speaker notes">
       <div id="notes-split" class="notes-split" role="separator" aria-orientation="horizontal" aria-controls="notes" tabindex="0"
         title="Drag to resize the notes (double-click: default size)" aria-label="Resize the speaker notes"></div>

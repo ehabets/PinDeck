@@ -44,7 +44,7 @@ function loadMain() {
   f.className = "loading";
   f.title = "Slide";
   f.src = deckSrc("main", `&start=${state.current}`);
-  $("stage").appendChild(f);
+  $("stage-view").appendChild(f);
   if (pendingMain) pendingMain.remove();
   pendingMain = f;
   // a deck page whose slides never start (a script that fails, broken HTML, the file gone): say so
@@ -58,6 +58,37 @@ function stageProblem(why) {
   el.innerHTML = `<b>PinDeck cannot show this deck.</b><span>${esc(why)}</span>` +
     `<span>Fix the file, or describe the problem in the chat and the assistant can fix it.</span>`;
 }
+/* Zoom: the slide scales itself to its frame, so zooming in makes the frame larger than the view, which then
+   scrolls. zoom is relative to "the whole slide shows" (1). Pins and handles are drawn inside the frame. */
+const ZOOM_KEY = FRONT ? `editor.zoom:${BASE}` : "editor.zoom", ZOOM_MAX = 8;
+let zoom = (() => { try { return +localStorage.getItem(ZOOM_KEY) || 1; } catch { return 1; } })(), aspect = 16 / 9;
+// the zoom at which the slide fills the view in its other direction (a portrait poster: the width)
+function fillZoom() {
+  const v = $("stage-view"), w = v.clientWidth, h = v.clientHeight;
+  return w && h ? Math.max(w / Math.min(w, h * aspect), h / Math.min(h, w / aspect)) : 1;
+}
+function applyZoom(z = zoom) {
+  const v = $("stage-view"), w = v.clientWidth, h = v.clientHeight;
+  if (!w || !h) return;
+  zoom = Math.min(ZOOM_MAX, Math.max(1, z));
+  if (zoom < 1.02) zoom = 1;
+  // what is in the middle of the view stays there
+  const cx = (v.scrollLeft + w / 2) / v.scrollWidth, cy = (v.scrollTop + h / 2) / v.scrollHeight;
+  v.style.setProperty("--zw", zoom === 1 ? "100%" : Math.max(w, Math.round(zoom * Math.min(w, h * aspect))) + "px");
+  v.style.setProperty("--zh", zoom === 1 ? "100%" : Math.max(h, Math.round(zoom * Math.min(h, w / aspect))) + "px");
+  v.scrollLeft = cx * v.scrollWidth - w / 2;
+  v.scrollTop = cy * v.scrollHeight - h / 2;
+  $("zoom-fit").textContent = Math.round(zoom * 100) + "%";
+  $("zoom-out").disabled = zoom === 1;
+  $("zoom-in").disabled = zoom === ZOOM_MAX;
+  try { localStorage.setItem(ZOOM_KEY, String(zoom)); } catch {}
+}
+$("zoom-in").onclick = () => applyZoom(zoom * 1.25);
+$("zoom-out").onclick = () => applyZoom(zoom / 1.25);
+$("zoom-fit").onclick = () => applyZoom(1);
+$("zoom-fill").onclick = () => applyZoom(Math.abs(zoom - fillZoom()) < 0.02 ? 1 : fillZoom());
+new ResizeObserver(() => applyZoom()).observe($("stage"));   // the window, the notes or the chat changed size
+
 let measureReject = null;
 function loadMeasure() {
   measure?.iframe.remove();
@@ -119,6 +150,7 @@ const editorHost = {
     old?.iframe.remove();
     stageProblem(null);
     state.slides = inf.slides;
+    if (inf.width && inf.height) { aspect = inf.width / inf.height; applyZoom(); }
     state.current = Math.min(state.current, state.slides.length - 1);
     if (inf.current !== state.current) bridge.goto(state.current);
     bridge.setMode(state.mode);

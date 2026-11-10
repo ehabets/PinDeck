@@ -34,6 +34,19 @@ The selector may use tag names, `#id`, `.class`, `[attr]` and `[attr="value"]`, 
 
 Both tags are needed: PinDeck opens the slides at the given size for screenshots and PDF pages. A missing size, or a selector that finds no slides or that PinDeck cannot read, is reported before anything changes. While PinDeck runs, it reads the tags again for every screenshot, PDF and assistant session; the editor reads them when the slide reloads. If a tag stops working meanwhile, the editor shows the same message and the assistant is told. A session already running keeps the slide selector it started with; **New chat** starts one with the new selector.
 
+### Posters
+
+A poster is a deck with one slide: a page that names itself as the slide and gives its size, as above.
+
+```html
+<meta name="pindeck:slides" content="main.poster">
+<meta name="pindeck:size" content="3179x4494">   <!-- A0 portrait at 96 px per inch -->
+```
+
+`ocean-poster-example/` has two posters in the Ocean look: `portrait.html` (A0 portrait, two columns) and `landscape.html` (A0 landscape, three columns). Open one with `pindeck ocean-poster-example/portrait.html`. At 96 px per inch the exported handout PDF is one A0 page; print it scaled for A1 (71 %) or another A size. The example's `README.md` lists its blocks and says how to change the size.
+
+Attach the paper or the slides to a message and ask the assistant to fill the blocks; it checks that every column fits. The poster is shown whole at first: zoom in from the bottom right corner of the slide area (see [Working with it](using.md#working-with-it)). Figures are best as SVG; a figure cut from a PDF with `pdf-figure` is at most 4000 px wide, enough for about a column.
+
 ## Making your own template
 
 PinDeck has no template generator; a template is simply a deck folder. Start from a copy of the example:
